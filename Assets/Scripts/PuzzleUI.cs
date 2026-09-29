@@ -8,6 +8,7 @@ public sealed class PuzzleUI : MonoBehaviour
 {
     private Text levelText;
     private Text doorsText;
+    private Text chooseStartText;
     private Text resultText;
     private GameObject restartGameButton;
     private Font font;
@@ -43,6 +44,13 @@ public sealed class PuzzleUI : MonoBehaviour
         Place(doorsText.rectTransform, new Vector2(0.5f, 1), new Vector2(0, -165),
             new Vector2(700, 70));
 
+        chooseStartText = MakeText(canvasObject.transform, "Choose Start Room", 46,
+            TextAnchor.MiddleCenter, new Color(0.12f, 0.42f, 0.62f), false);
+        Place(chooseStartText.rectTransform, new Vector2(0.5f, 1),
+            new Vector2(0, -245), new Vector2(900, 70));
+        chooseStartText.text = "CHOOSE START ROOM";
+        chooseStartText.gameObject.SetActive(false);
+
         MakeButton(canvasObject.transform, "Restart", new Vector2(0.5f, 0),
             new Vector2(0, 110), new Vector2(350, 100), onRestart);
 
@@ -64,6 +72,11 @@ public sealed class PuzzleUI : MonoBehaviour
         doorsText.text = "Doors " + closed + "/" + level.Doors.Length;
         resultText.gameObject.SetActive(false);
         restartGameButton.SetActive(false);
+    }
+
+    public void SetChooseStartRoom(bool choosing)
+    {
+        chooseStartText.gameObject.SetActive(choosing);
     }
 
     public void ShowResult(bool won)

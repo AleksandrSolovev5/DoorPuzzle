@@ -5,6 +5,8 @@ using UnityEngine.InputSystem;
 
 public sealed class DoorPuzzleGame : MonoBehaviour
 {
+    private enum GameState { ChooseStartRoom, Playing }
+
     private const float PlayerMoveSpeed = 4.5f;
     private static Sprite squareSprite;
     private static Sprite circleSprite;
@@ -19,6 +21,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private int currentRoom;
     private int closedDoors;
     private int closedCount;
+    private GameState state;
     private bool busy;
 
     private void Awake()
@@ -65,6 +68,12 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private void TryTap(Vector2 screenPosition)
     {
         Vector3 world = mainCamera.ScreenToWorldPoint(screenPosition);
+        if (state == GameState.ChooseStartRoom)
+        {
+            TryChooseStartRoom(new Vector2(world.x, world.y));
+            return;
+        }
+
         Collider2D hit = Physics2D.OverlapPoint(new Vector2(world.x, world.y));
         if (hit == null) return;
         DoorView view = hit.GetComponent<DoorView>();
@@ -75,6 +84,24 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         if ((closedDoors & (1 << index)) != 0 || !door.Touches(currentRoom)) return;
 
         StartCoroutine(CrossDoor(index));
+    }
+
+    private void TryChooseStartRoom(Vector2 point)
+    {
+        for (int i = 0; i < level.Rooms.Length; i++)
+        {
+            RoomDefinition room = level.Rooms[i];
+            Vector2 offset = point - room.Center;
+            if (Mathf.Abs(offset.x) >= room.Size.x * 0.5f ||
+                Mathf.Abs(offset.y) >= room.Size.y * 0.5f)
+                continue;
+
+            currentRoom = i;
+            DrawPlayer();
+            state = GameState.Playing;
+            ui.SetChooseStartRoom(false);
+            return;
+        }
     }
 
     private IEnumerator CrossDoor(int index)
@@ -112,7 +139,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             else
                 ui.ShowGameOver();
         }
-        else if (door.IsExit || !PuzzleSolver.CanFinish(level, currentRoom, closedDoors))
+        else if (PuzzleSolver.IsDeadEnd(level, currentRoom, closedDoors))
         {
             ui.ShowResult(false);
             yield return new WaitForSeconds(1.5f);
@@ -164,9 +191,11 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
         levelIndex = index;
         level = LevelCatalog.Levels[index];
-        currentRoom = level.StartRoom;
+        currentRoom = -1;
         closedDoors = 0;
         closedCount = 0;
+        player = null;
+        state = GameState.ChooseStartRoom;
         busy = false;
         mainCamera.orthographic = true;
         float halfWidth = 0;
@@ -184,8 +213,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         levelRoot.transform.SetParent(transform, false);
         DrawRooms();
         DrawDoors();
-        DrawPlayer();
         ui.SetProgress(level, closedCount);
+        ui.SetChooseStartRoom(true);
     }
 
     private void DrawRooms()

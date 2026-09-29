@@ -6,17 +6,15 @@ public sealed class LevelDefinition
     public readonly string Name;
     public readonly RoomDefinition[] Rooms;
     public readonly DoorDefinition[] Doors;
-    public readonly int StartRoom;
     public readonly float CameraSize;
     public readonly Color FloorColor;
 
     public LevelDefinition(string name, RoomDefinition[] rooms, DoorDefinition[] doors,
-        int startRoom, float cameraSize, Color floorColor)
+        float cameraSize, Color floorColor)
     {
         Name = name;
         Rooms = rooms;
         Doors = doors;
-        StartRoom = startRoom;
         CameraSize = cameraSize;
         FloorColor = floorColor;
     }

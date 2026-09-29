@@ -16,11 +16,11 @@ public static class LevelCatalog
             new DoorDefinition(1, 2, new Vector2(0, 1), true),
             new DoorDefinition(2, 0, new Vector2(1, 0)),
             new DoorDefinition(0, -1, new Vector2(0, -2), isExit: true)
-        }, 0, 4.5f, new Color(0.92f, 0.96f, 0.96f)),
+        }, 4.5f, new Color(0.92f, 0.96f, 0.96f)),
 
         new LevelDefinition("LEVEL 2", new[]
         {
-            // Three equal columns. Room 0 contains the player's starting point.
+            // Three equal columns; the player chooses a starting room.
             new RoomDefinition(new Vector2(0, -2.2f), new Vector2(1.6f, 2)),
             new RoomDefinition(new Vector2(1.6f, -1.2f), new Vector2(1.6f, 4)),
             new RoomDefinition(new Vector2(1.6f, 2), new Vector2(1.6f, 2.4f)),
@@ -41,6 +41,6 @@ public static class LevelCatalog
             new DoorDefinition(5, 6, new Vector2(-1.6f, 0.8f)),
             new DoorDefinition(6, 3, new Vector2(-0.8f, 2), true),
             new DoorDefinition(3, -1, new Vector2(0, 3.2f), isExit: true)
-        }, 0, 4.7f, new Color(0.96f, 0.93f, 0.98f))
+        }, 4.7f, new Color(0.96f, 0.93f, 0.98f))
     };
 }

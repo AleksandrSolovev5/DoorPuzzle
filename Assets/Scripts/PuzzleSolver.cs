@@ -3,35 +3,49 @@ using System.Collections.Generic;
 // Each bit in closedDoors records one permanently closed door.
 public static class PuzzleSolver
 {
-    public static bool CanFinish(LevelDefinition level, int currentRoom, int closedDoors)
+    public static bool IsDeadEnd(LevelDefinition level, int currentRoom, int closedDoors)
     {
-        return Search(level, currentRoom, closedDoors, new HashSet<long>());
-    }
-
-    private static bool Search(LevelDefinition level, int room, int closed, HashSet<long> failed)
-    {
-        long state = ((long)closed << 16) | (uint)room;
-        if (failed.Contains(state)) return false;
-
         int allClosed = (1 << level.Doors.Length) - 1;
-        for (int i = 0; i < level.Doors.Length; i++)
-        {
-            int bit = 1 << i;
-            DoorDefinition door = level.Doors[i];
-            if ((closed & bit) != 0 || !door.Touches(room)) continue;
+        if (closedDoors == allClosed) return false;
 
-            int nextClosed = closed | bit;
-            if (door.IsExit)
-            {
-                if (nextClosed == allClosed) return true;
-            }
-            else if (Search(level, door.OtherRoom(room), nextClosed, failed))
-            {
+        for (int i = 0; i < level.Doors.Length; i++)
+            if (level.Doors[i].IsExit && (closedDoors & (1 << i)) != 0)
                 return true;
+
+        if (currentRoom < 0 || currentRoom >= level.Rooms.Length) return true;
+
+        // Open interior doors form the rooms the player can still reach.
+        bool[] reachable = new bool[level.Rooms.Length];
+        Queue<int> pending = new Queue<int>();
+        reachable[currentRoom] = true;
+        pending.Enqueue(currentRoom);
+
+        while (pending.Count > 0)
+        {
+            int room = pending.Dequeue();
+            for (int i = 0; i < level.Doors.Length; i++)
+            {
+                DoorDefinition door = level.Doors[i];
+                if ((closedDoors & (1 << i)) != 0 || door.IsExit || !door.Touches(room))
+                    continue;
+
+                int nextRoom = door.OtherRoom(room);
+                if (nextRoom < 0 || reachable[nextRoom]) continue;
+                reachable[nextRoom] = true;
+                pending.Enqueue(nextRoom);
             }
         }
 
-        failed.Add(state);
+        // A door is lost only if neither of its rooms can be reached anymore.
+        for (int i = 0; i < level.Doors.Length; i++)
+        {
+            if ((closedDoors & (1 << i)) != 0) continue;
+            DoorDefinition door = level.Doors[i];
+            if (!reachable[door.RoomA] &&
+                (door.RoomB < 0 || !reachable[door.RoomB]))
+                return true;
+        }
+
         return false;
     }
 }
