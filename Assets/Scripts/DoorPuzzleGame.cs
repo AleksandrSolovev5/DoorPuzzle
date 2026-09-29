@@ -16,8 +16,10 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private LevelDefinition level;
     private GameObject levelRoot;
     private DoorView[] doorViews;
+    private LevelDefinition[][] generatedPuzzles;
     private Transform player;
-    private int levelIndex;
+    private int currentLevelIndex;
+    private int currentPuzzleIndex;
     private int currentRoom;
     private int closedDoors;
     private int closedCount;
@@ -41,8 +43,9 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
         CreateSprites();
         ui = gameObject.AddComponent<PuzzleUI>();
-        ui.Build(RestartLevel, RestartGame);
-        LoadLevel(0);
+        ui.Build(RestartPuzzle, RestartGame);
+        generatedPuzzles = new LevelDefinition[LevelCatalog.Levels.Length][];
+        LoadPuzzle(0, 0);
     }
 
     private void Update()
@@ -74,16 +77,19 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             return;
         }
 
-        Collider2D hit = Physics2D.OverlapPoint(new Vector2(world.x, world.y));
-        if (hit == null) return;
-        DoorView view = hit.GetComponent<DoorView>();
-        if (view == null) return;
+        foreach (Collider2D hit in Physics2D.OverlapPointAll(new Vector2(world.x, world.y)))
+        {
+            DoorView view = hit.GetComponent<DoorView>();
+            if (view == null) continue;
 
-        int index = view.Index;
-        DoorDefinition door = level.Doors[index];
-        if ((closedDoors & (1 << index)) != 0 || !door.Touches(currentRoom)) return;
+            int index = view.Index;
+            DoorDefinition door = level.Doors[index];
+            if ((closedDoors & (1 << index)) != 0 || !door.Touches(currentRoom))
+                continue;
 
-        StartCoroutine(CrossDoor(index));
+            StartCoroutine(CrossDoor(index));
+            return;
+        }
     }
 
     private void TryChooseStartRoom(Vector2 point)
@@ -128,14 +134,20 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         yield return doorViews[index].AnimateClosed(0.35f);
         closedDoors |= 1 << index;
         closedCount++;
-        ui.SetProgress(level, closedCount);
+        RefreshProgress();
 
         if (door.IsExit && closedCount == level.Doors.Length)
         {
             ui.ShowResult(true);
-            yield return new WaitForSeconds(1.5f);
-            if (levelIndex + 1 < LevelCatalog.Levels.Length)
-                LoadLevel(levelIndex + 1);
+            yield return new WaitForSeconds(1.2f);
+            if (currentPuzzleIndex + 1 < LevelCatalog.Levels[currentLevelIndex].Puzzles.Length)
+                LoadPuzzle(currentLevelIndex, currentPuzzleIndex + 1);
+            else if (currentLevelIndex + 1 < LevelCatalog.Levels.Length)
+            {
+                ui.ShowLevelComplete();
+                yield return new WaitForSeconds(1.5f);
+                LoadPuzzle(currentLevelIndex + 1, 0);
+            }
             else
                 ui.ShowGameOver();
         }
@@ -143,7 +155,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         {
             ui.ShowResult(false);
             yield return new WaitForSeconds(1.5f);
-            LoadLevel(levelIndex);
+            LoadPuzzle(currentLevelIndex, currentPuzzleIndex);
         }
         else
         {
@@ -169,19 +181,19 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         player.position = destination;
     }
 
-    private void RestartLevel()
+    private void RestartPuzzle()
     {
         StopAllCoroutines();
-        LoadLevel(levelIndex);
+        LoadPuzzle(currentLevelIndex, currentPuzzleIndex);
     }
 
     private void RestartGame()
     {
         StopAllCoroutines();
-        LoadLevel(0);
+        LoadPuzzle(0, 0);
     }
 
-    private void LoadLevel(int index)
+    private void LoadPuzzle(int levelIndex, int puzzleIndex)
     {
         if (levelRoot != null)
         {
@@ -189,8 +201,18 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             Destroy(levelRoot);
         }
 
-        levelIndex = index;
-        level = LevelCatalog.Levels[index];
+        currentLevelIndex = levelIndex;
+        currentPuzzleIndex = puzzleIndex;
+        if (generatedPuzzles[levelIndex] == null)
+            generatedPuzzles[levelIndex] =
+                new LevelDefinition[LevelCatalog.Levels[levelIndex].Puzzles.Length];
+        if (generatedPuzzles[levelIndex][puzzleIndex] == null)
+        {
+            PuzzleConfig config = LevelCatalog.Levels[levelIndex].Puzzles[puzzleIndex];
+            string name = "Level " + (levelIndex + 1) + " Puzzle " + (puzzleIndex + 1);
+            generatedPuzzles[levelIndex][puzzleIndex] = PuzzleGenerator.Generate(config, name);
+        }
+        level = generatedPuzzles[levelIndex][puzzleIndex];
         currentRoom = -1;
         closedDoors = 0;
         closedCount = 0;
@@ -213,8 +235,15 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         levelRoot.transform.SetParent(transform, false);
         DrawRooms();
         DrawDoors();
-        ui.SetProgress(level, closedCount);
+        RefreshProgress();
         ui.SetChooseStartRoom(true);
+    }
+
+    private void RefreshProgress()
+    {
+        ui.SetProgress(currentLevelIndex + 1, currentPuzzleIndex + 1,
+            LevelCatalog.Levels[currentLevelIndex].Puzzles.Length,
+            closedCount, level.Doors.Length);
     }
 
     private void DrawRooms()
@@ -222,7 +251,11 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         for (int i = 0; i < level.Rooms.Length; i++)
         {
             RoomDefinition room = level.Rooms[i];
-            Shape("Room " + (i + 1) + " floor", room.Center, room.Size, level.FloorColor, 0);
+            SpriteRenderer floor = Shape("Room " + (i + 1) + " floor",
+                room.Center, room.Size, level.FloorColor, 0);
+            BoxCollider2D roomArea = floor.gameObject.AddComponent<BoxCollider2D>();
+            roomArea.size = Vector2.one;
+            roomArea.isTrigger = true;
             float left = room.Center.x - room.Size.x * 0.5f;
             float right = room.Center.x + room.Size.x * 0.5f;
             float bottom = room.Center.y - room.Size.y * 0.5f;
@@ -296,12 +329,12 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     {
         GameObject body = new GameObject("Player");
         body.transform.SetParent(levelRoot.transform, false);
-        Vector2 start = level.Rooms[currentRoom].Center;
+        Vector2 start = level.Rooms[currentRoom].SpawnPoint;
         body.transform.position = new Vector3(start.x, start.y, 0);
         body.transform.localScale = new Vector3(0.6f, 0.6f, 1);
         SpriteRenderer renderer = body.AddComponent<SpriteRenderer>();
         renderer.sprite = circleSprite;
-        renderer.color = levelIndex == 1 ? new Color(0.91f, 0.18f, 0.22f)
+        renderer.color = currentLevelIndex == 1 ? new Color(0.91f, 0.18f, 0.22f)
             : new Color(0.13f, 0.57f, 0.85f);
         renderer.sortingOrder = 10;
         player = body.transform;

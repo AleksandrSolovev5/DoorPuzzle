@@ -7,6 +7,7 @@ using UnityEngine.EventSystems;
 public sealed class PuzzleUI : MonoBehaviour
 {
     private Text levelText;
+    private Text puzzleText;
     private Text doorsText;
     private Text chooseStartText;
     private Text resultText;
@@ -36,18 +37,23 @@ public sealed class PuzzleUI : MonoBehaviour
 
         levelText = MakeText(canvasObject.transform, "Level", 60, TextAnchor.MiddleCenter,
             new Color(0.12f, 0.16f, 0.2f), false);
-        Place(levelText.rectTransform, new Vector2(0.5f, 1), new Vector2(0, -85),
-            new Vector2(800, 90));
+        Place(levelText.rectTransform, new Vector2(0.5f, 1), new Vector2(0, -70),
+            new Vector2(800, 80));
+
+        puzzleText = MakeText(canvasObject.transform, "Puzzle", 44,
+            TextAnchor.MiddleCenter, new Color(0.12f, 0.16f, 0.2f), false);
+        Place(puzzleText.rectTransform, new Vector2(0.5f, 1),
+            new Vector2(0, -135), new Vector2(800, 65));
 
         doorsText = MakeText(canvasObject.transform, "Doors", 42, TextAnchor.MiddleCenter,
             new Color(0.28f, 0.34f, 0.4f), false);
-        Place(doorsText.rectTransform, new Vector2(0.5f, 1), new Vector2(0, -165),
+        Place(doorsText.rectTransform, new Vector2(0.5f, 1), new Vector2(0, -200),
             new Vector2(700, 70));
 
         chooseStartText = MakeText(canvasObject.transform, "Choose Start Room", 46,
             TextAnchor.MiddleCenter, new Color(0.12f, 0.42f, 0.62f), false);
         Place(chooseStartText.rectTransform, new Vector2(0.5f, 1),
-            new Vector2(0, -245), new Vector2(900, 70));
+            new Vector2(0, -285), new Vector2(900, 70));
         chooseStartText.text = "CHOOSE START ROOM";
         chooseStartText.gameObject.SetActive(false);
 
@@ -66,10 +72,12 @@ public sealed class PuzzleUI : MonoBehaviour
         restartGameButton.SetActive(false);
     }
 
-    public void SetProgress(LevelDefinition level, int closed)
+    public void SetProgress(int levelNumber, int puzzleNumber, int puzzleCount,
+        int closed, int doorCount)
     {
-        levelText.text = level.Name;
-        doorsText.text = "Doors " + closed + "/" + level.Doors.Length;
+        levelText.text = "LEVEL " + levelNumber;
+        puzzleText.text = "PUZZLE " + puzzleNumber + "/" + puzzleCount;
+        doorsText.text = "Doors " + closed + "/" + doorCount;
         resultText.gameObject.SetActive(false);
         restartGameButton.SetActive(false);
     }
@@ -85,6 +93,14 @@ public sealed class PuzzleUI : MonoBehaviour
         resultText.fontSize = won ? 88 : 74;
         resultText.color = won ? new Color(0.12f, 0.68f, 0.28f)
             : new Color(0.78f, 0.2f, 0.17f);
+        resultText.gameObject.SetActive(true);
+    }
+
+    public void ShowLevelComplete()
+    {
+        resultText.text = "LEVEL COMPLETE";
+        resultText.fontSize = 78;
+        resultText.color = new Color(0.12f, 0.68f, 0.28f);
         resultText.gameObject.SetActive(true);
     }
 

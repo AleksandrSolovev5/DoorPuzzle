@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// A level is a small graph with positions for its wireframe drawing.
+// One generated puzzle: a room graph plus positions for its 2D drawing.
 public sealed class LevelDefinition
 {
     public readonly string Name;
@@ -24,11 +24,13 @@ public sealed class RoomDefinition
 {
     public readonly Vector2 Center;
     public readonly Vector2 Size;
+    public readonly Vector2 SpawnPoint;
 
     public RoomDefinition(Vector2 center, Vector2 size)
     {
         Center = center;
         Size = size;
+        SpawnPoint = center;
     }
 }
 

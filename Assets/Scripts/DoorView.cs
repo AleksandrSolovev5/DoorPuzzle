@@ -3,7 +3,7 @@ using UnityEngine;
 
 public sealed class DoorView : MonoBehaviour
 {
-    // Every level uses this same door size and tap target.
+    // Every puzzle uses this same door size and tap target.
     public const float Width = 0.6f;
     private const float Thickness = 0.16f;
     private const float TapSize = 0.72f;
