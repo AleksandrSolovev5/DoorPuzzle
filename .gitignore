@@ -1,0 +1,38 @@
+# Unity-generated data
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Build output and Android packages
+[Bb]uild/
+[Bb]uilds/
+APK готовые/
+*.apk
+*.aab
+*.apks
+*_BackUpThisFolder_ButDontShipItWithYourGame/
+*_BurstDebugInformation_DoNotShip/
+.utmp/
+
+# IDE-generated files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.opendb
+*.VC.db
+
+# Local signing credentials
+*.keystore
+*.jks
