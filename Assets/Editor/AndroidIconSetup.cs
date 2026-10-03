@@ -35,15 +35,17 @@ public sealed class AndroidIconSetup : IPreprocessBuildWithReport
         }
 
         NamedBuildTarget target = NamedBuildTarget.Android;
-        SetIcons(target, AndroidPlatformIconKind.Adaptive, artwork, transparent);
+        SetAdaptiveIcons(target, artwork, transparent);
     }
 
-    private static void SetIcons(NamedBuildTarget target, PlatformIconKind kind,
-        params Texture2D[] textures)
+    private static void SetAdaptiveIcons(NamedBuildTarget target,
+        Texture2D artwork, Texture2D transparent)
     {
+        // Android 8+ adaptive icons only. The launcher applies its own shape.
+        PlatformIconKind kind = AndroidPlatformIconKind.Adaptive;
         PlatformIcon[] slots = PlayerSettings.GetPlatformIcons(target, kind);
         foreach (PlatformIcon slot in slots)
-            slot.SetTextures(textures);
+            slot.SetTextures(artwork, transparent);
         PlayerSettings.SetPlatformIcons(target, kind, slots);
     }
 }

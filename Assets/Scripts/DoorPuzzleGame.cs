@@ -3,10 +3,19 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+public enum PuzzleGameState
+{
+    MainMenu,
+    ChooseStartRoom,
+    Playing,
+    PuzzleComplete,
+    Lose,
+    LevelComplete,
+    GameComplete
+}
+
 public sealed class DoorPuzzleGame : MonoBehaviour
 {
-    private enum GameState { ChooseStartRoom, Playing }
-
     private const float PlayerMoveSpeed = 4.5f;
     private static Sprite squareSprite;
     private static Sprite circleSprite;
@@ -15,6 +24,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private PuzzleUI ui;
     private LevelDefinition level;
     private GameObject levelRoot;
+    private GameObject startRoomHints;
     private DoorView[] doorViews;
     private LevelDefinition[][] generatedPuzzles;
     private Transform player;
@@ -23,7 +33,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private int currentRoom;
     private int closedDoors;
     private int closedCount;
-    private GameState state;
+    private PuzzleGameState state;
     private bool busy;
 
     private void Awake()
@@ -41,16 +51,17 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             return;
         }
 
+        mainCamera.backgroundColor = PuzzleVisualStyle.Background;
         CreateSprites();
         ui = gameObject.AddComponent<PuzzleUI>();
-        ui.Build(RestartPuzzle, RestartGame);
+        ui.Build(StartGame, RestartPuzzle, NextPuzzle, NextLevel, ReturnHome);
         generatedPuzzles = new LevelDefinition[LevelCatalog.Levels.Length][];
-        LoadPuzzle(0, 0);
+        ShowMainMenu();
     }
 
     private void Update()
     {
-        if (busy) return;
+        if (!CanAcceptGameplayInput()) return;
 
         // Input System is the project's active input backend. Both paths work
         // without changing the Android settings or adding an input asset.
@@ -70,8 +81,10 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void TryTap(Vector2 screenPosition)
     {
+        if (!CanAcceptGameplayInput() || ui.IsPointerOverUI(screenPosition)) return;
+
         Vector3 world = mainCamera.ScreenToWorldPoint(screenPosition);
-        if (state == GameState.ChooseStartRoom)
+        if (state == PuzzleGameState.ChooseStartRoom)
         {
             TryChooseStartRoom(new Vector2(world.x, world.y));
             return;
@@ -94,6 +107,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void TryChooseStartRoom(Vector2 point)
     {
+        if (state != PuzzleGameState.ChooseStartRoom || busy) return;
+
         for (int i = 0; i < level.Rooms.Length; i++)
         {
             RoomDefinition room = level.Rooms[i];
@@ -104,8 +119,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
             currentRoom = i;
             DrawPlayer();
-            state = GameState.Playing;
-            ui.SetChooseStartRoom(false);
+            SetState(PuzzleGameState.Playing);
             return;
         }
     }
@@ -135,31 +149,20 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         closedDoors |= 1 << index;
         closedCount++;
         RefreshProgress();
+        busy = false;
 
         if (door.IsExit && closedCount == level.Doors.Length)
         {
-            ui.ShowResult(true);
-            yield return new WaitForSeconds(1.2f);
             if (currentPuzzleIndex + 1 < LevelCatalog.Levels[currentLevelIndex].Puzzles.Length)
-                LoadPuzzle(currentLevelIndex, currentPuzzleIndex + 1);
+                SetState(PuzzleGameState.PuzzleComplete);
             else if (currentLevelIndex + 1 < LevelCatalog.Levels.Length)
-            {
-                ui.ShowLevelComplete();
-                yield return new WaitForSeconds(1.5f);
-                LoadPuzzle(currentLevelIndex + 1, 0);
-            }
+                SetState(PuzzleGameState.LevelComplete);
             else
-                ui.ShowGameOver();
+                SetState(PuzzleGameState.GameComplete);
         }
         else if (PuzzleSolver.IsDeadEnd(level, currentRoom, closedDoors))
         {
-            ui.ShowResult(false);
-            yield return new WaitForSeconds(1.5f);
-            LoadPuzzle(currentLevelIndex, currentPuzzleIndex);
-        }
-        else
-        {
-            busy = false;
+            SetState(PuzzleGameState.Lose);
         }
     }
 
@@ -183,23 +186,85 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void RestartPuzzle()
     {
+        if (state != PuzzleGameState.ChooseStartRoom &&
+            state != PuzzleGameState.Playing && state != PuzzleGameState.Lose)
+            return;
+
         StopAllCoroutines();
         LoadPuzzle(currentLevelIndex, currentPuzzleIndex);
     }
 
-    private void RestartGame()
+    private void StartGame()
     {
+        if (state != PuzzleGameState.MainMenu && state != PuzzleGameState.GameComplete)
+            return;
+
         StopAllCoroutines();
         LoadPuzzle(0, 0);
     }
 
-    private void LoadPuzzle(int levelIndex, int puzzleIndex)
+    private void NextPuzzle()
+    {
+        if (state != PuzzleGameState.PuzzleComplete) return;
+        LoadPuzzle(currentLevelIndex, currentPuzzleIndex + 1);
+    }
+
+    private void NextLevel()
+    {
+        if (state != PuzzleGameState.LevelComplete) return;
+        LoadPuzzle(currentLevelIndex + 1, 0);
+    }
+
+    private void ReturnHome()
+    {
+        if (state != PuzzleGameState.GameComplete) return;
+        ShowMainMenu();
+    }
+
+    private void ShowMainMenu()
+    {
+        StopAllCoroutines();
+        ClearPuzzle();
+        currentLevelIndex = 0;
+        currentPuzzleIndex = 0;
+        currentRoom = -1;
+        closedDoors = 0;
+        closedCount = 0;
+        busy = false;
+        SetState(PuzzleGameState.MainMenu);
+    }
+
+    private bool CanAcceptGameplayInput()
+    {
+        return !busy && (state == PuzzleGameState.ChooseStartRoom ||
+            state == PuzzleGameState.Playing);
+    }
+
+    private void SetState(PuzzleGameState nextState)
+    {
+        state = nextState;
+        ui.ShowState(nextState);
+        if (startRoomHints != null)
+            startRoomHints.SetActive(nextState == PuzzleGameState.ChooseStartRoom);
+    }
+
+    private void ClearPuzzle()
     {
         if (levelRoot != null)
         {
             levelRoot.SetActive(false);
             Destroy(levelRoot);
         }
+        levelRoot = null;
+        startRoomHints = null;
+        level = null;
+        doorViews = null;
+        player = null;
+    }
+
+    private void LoadPuzzle(int levelIndex, int puzzleIndex)
+    {
+        ClearPuzzle();
 
         currentLevelIndex = levelIndex;
         currentPuzzleIndex = puzzleIndex;
@@ -217,7 +282,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         closedDoors = 0;
         closedCount = 0;
         player = null;
-        state = GameState.ChooseStartRoom;
         busy = false;
         mainCamera.orthographic = true;
         float halfWidth = 0;
@@ -229,14 +293,14 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         mainCamera.orthographicSize = Mathf.Max(level.CameraSize,
             (halfWidth + 0.2f) / mainCamera.aspect);
         mainCamera.transform.position = new Vector3(0, 0, -10);
-        mainCamera.backgroundColor = new Color(0.98f, 0.98f, 0.96f);
+        mainCamera.backgroundColor = PuzzleVisualStyle.Background;
 
         levelRoot = new GameObject(level.Name);
         levelRoot.transform.SetParent(transform, false);
         DrawRooms();
         DrawDoors();
         RefreshProgress();
-        ui.SetChooseStartRoom(true);
+        SetState(PuzzleGameState.ChooseStartRoom);
     }
 
     private void RefreshProgress()
@@ -248,11 +312,15 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void DrawRooms()
     {
+        startRoomHints = new GameObject("Start Room Hints");
+        startRoomHints.transform.SetParent(levelRoot.transform, false);
         for (int i = 0; i < level.Rooms.Length; i++)
         {
             RoomDefinition room = level.Rooms[i];
+            Shape("Room shadow", room.Center + new Vector2(0.04f, -0.07f),
+                room.Size, PuzzleVisualStyle.Shadow, -1);
             SpriteRenderer floor = Shape("Room " + (i + 1) + " floor",
-                room.Center, room.Size, level.FloorColor, 0);
+                room.Center, room.Size, PuzzleVisualStyle.RoomColor(level.FloorColor), 0);
             BoxCollider2D roomArea = floor.gameObject.AddComponent<BoxCollider2D>();
             roomArea.size = Vector2.one;
             roomArea.isTrigger = true;
@@ -260,11 +328,33 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             float right = room.Center.x + room.Size.x * 0.5f;
             float bottom = room.Center.y - room.Size.y * 0.5f;
             float top = room.Center.y + room.Size.y * 0.5f;
-            Color wall = new Color(0.16f, 0.20f, 0.23f);
+            Color wall = PuzzleVisualStyle.Wall;
             DrawWall(i, false, top, left, right, wall);
             DrawWall(i, false, bottom, left, right, wall);
             DrawWall(i, true, left, bottom, top, wall);
             DrawWall(i, true, right, bottom, top, wall);
+            DrawStartRoomHint(room);
+        }
+    }
+
+    private void DrawStartRoomHint(RoomDefinition room)
+    {
+        // Quiet corner marks show that every room can be selected. They have
+        // no colliders and disappear after the player chooses a room.
+        Color color = Color.Lerp(PuzzleVisualStyle.RoomSurface,
+            PuzzleVisualStyle.Primary, 0.34f);
+        for (int x = -1; x <= 1; x += 2)
+        for (int y = -1; y <= 1; y += 2)
+        {
+            Vector2 corner = room.Center + new Vector2(
+                x * (room.Size.x * 0.5f - 0.17f),
+                y * (room.Size.y * 0.5f - 0.17f));
+            Shape("Selection corner", corner - new Vector2(x * 0.07f, 0),
+                new Vector2(0.14f, 0.022f), color, 1)
+                .transform.SetParent(startRoomHints.transform, true);
+            Shape("Selection corner", corner - new Vector2(0, y * 0.07f),
+                new Vector2(0.022f, 0.14f), color, 1)
+                .transform.SetParent(startRoomHints.transform, true);
         }
     }
 
@@ -305,8 +395,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             ? new Vector2(coordinate, (start + end) * 0.5f)
             : new Vector2((start + end) * 0.5f, coordinate);
         Vector2 size = vertical
-            ? new Vector2(0.09f, end - start + 0.01f)
-            : new Vector2(end - start + 0.01f, 0.09f);
+            ? new Vector2(0.07f, end - start + 0.01f)
+            : new Vector2(end - start + 0.01f, 0.07f);
         Shape("Wall", center, size, color, 2);
     }
 
@@ -334,9 +424,15 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         body.transform.localScale = new Vector3(0.6f, 0.6f, 1);
         SpriteRenderer renderer = body.AddComponent<SpriteRenderer>();
         renderer.sprite = circleSprite;
-        renderer.color = currentLevelIndex == 1 ? new Color(0.91f, 0.18f, 0.22f)
-            : new Color(0.13f, 0.57f, 0.85f);
+        renderer.color = PuzzleVisualStyle.Player;
         renderer.sortingOrder = 10;
+        GameObject rim = new GameObject("Player Rim");
+        rim.transform.SetParent(body.transform, false);
+        rim.transform.localScale = Vector3.one * 1.14f;
+        SpriteRenderer rimRenderer = rim.AddComponent<SpriteRenderer>();
+        rimRenderer.sprite = circleSprite;
+        rimRenderer.color = PuzzleVisualStyle.Surface;
+        rimRenderer.sortingOrder = 9;
         player = body.transform;
     }
 
@@ -364,18 +460,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         squareSprite = Sprite.Create(square, new Rect(0, 0, 1, 1),
             new Vector2(0.5f, 0.5f), 1);
 
-        const int pixels = 64;
-        Texture2D circle = new Texture2D(pixels, pixels, TextureFormat.RGBA32, false);
-        for (int y = 0; y < pixels; y++)
-        for (int x = 0; x < pixels; x++)
-        {
-            float dx = x - (pixels - 1) * 0.5f;
-            float dy = y - (pixels - 1) * 0.5f;
-            circle.SetPixel(x, y, dx * dx + dy * dy < 29 * 29
-                ? Color.white : Color.clear);
-        }
-        circle.Apply();
-        circleSprite = Sprite.Create(circle, new Rect(0, 0, pixels, pixels),
-            new Vector2(0.5f, 0.5f), pixels);
+        circleSprite = PuzzleVisualStyle.CircleSprite;
     }
 }

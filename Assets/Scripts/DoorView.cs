@@ -46,13 +46,27 @@ public sealed class DoorView : MonoBehaviour
         drawing.sprite = sprite;
         drawing.sortingOrder = 4;
 
-        openColor = door.IsExit ? new Color(0.15f, 0.78f, 0.32f)
-            : new Color(1f, 0.48f, 0.14f);
-        closedColor = door.IsExit ? new Color(0.07f, 0.38f, 0.19f)
-            : new Color(0.31f, 0.34f, 0.37f);
+        AddDetail("Hinge Pin", Vector2.zero, 0.065f, PuzzleVisualStyle.Wall);
+        AddDetail("Handle", new Vector2(Width * 0.8f, 0), 0.05f,
+            PuzzleVisualStyle.Surface);
+
+        openColor = door.IsExit ? PuzzleVisualStyle.ExitOpen : PuzzleVisualStyle.DoorOpen;
+        closedColor = door.IsExit ? PuzzleVisualStyle.ExitClosed : PuzzleVisualStyle.DoorClosed;
         IsClosed = false;
         hinge.localRotation = Quaternion.Euler(0, 0, openAngle);
         drawing.color = openColor;
+    }
+
+    private void AddDetail(string name, Vector2 position, float size, Color color)
+    {
+        GameObject detail = new GameObject(name);
+        detail.transform.SetParent(hinge, false);
+        detail.transform.localPosition = new Vector3(position.x, position.y, 0);
+        detail.transform.localScale = Vector3.one * size;
+        SpriteRenderer renderer = detail.AddComponent<SpriteRenderer>();
+        renderer.sprite = PuzzleVisualStyle.CircleSprite;
+        renderer.color = color;
+        renderer.sortingOrder = 5;
     }
 
     public IEnumerator AnimateClosed(float duration)
