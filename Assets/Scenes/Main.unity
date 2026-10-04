@@ -401,3 +401,4 @@ MonoBehaviour:
   doorCloseSound: {fileID: 8300000, guid: 7c5f20c79b7b43a3a26895905518b02f, type: 3}
   puzzleCompleteSound: {fileID: 8300000, guid: d69735a528124a5fb2bbd20cbcb61a43, type: 3}
   soundEffectsVolume: 0.8
+  minSwipeDistance: 60

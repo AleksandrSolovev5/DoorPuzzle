@@ -27,6 +27,9 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     [SerializeField] private AudioClip puzzleCompleteSound;
     [SerializeField, Range(0f, 1f)] private float soundEffectsVolume = 0.8f;
 
+    [Header("Input")]
+    [SerializeField, Min(1f)] private float minSwipeDistance = 60f;
+
     private const float PlayerMoveSpeed = 4.5f;
     private static Sprite squareSprite;
     private static Sprite circleSprite;
@@ -53,6 +56,15 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private Rect lastCameraArea;
     private Vector2Int lastCameraScreenSize;
     private Bounds level2VisualBounds;
+    private bool gestureActive;
+    private bool gestureIsTouch;
+    private int gestureTouchIndex;
+    private int gestureTouchId;
+    private Vector2 gestureStartScreen;
+    private Vector2 gestureStartWorld;
+    private float gestureMaxDistanceSquared;
+    private int gestureRoom;
+    private PuzzleGameState gestureState;
 
     private void Awake()
     {
@@ -96,22 +108,155 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void Update()
     {
-        if (!CanAcceptGameplayInput()) return;
+        if (!CanAcceptGameplayInput())
+        {
+            CancelGesture();
+            return;
+        }
 
-        // Input System is the project's active input backend. Both paths work
-        // without changing the Android settings or adding an input asset.
+        if (gestureActive)
+        {
+            UpdateGesture();
+            return;
+        }
+
+        // Track one finger. Ignore secondary fingers and touch-emulated mouse
+        // events so a single gesture can never produce two moves.
         if (Touchscreen.current != null)
         {
-            foreach (var touch in Touchscreen.current.touches)
+            bool touchInUse = false;
+            for (int i = 0; i < Touchscreen.current.touches.Count; i++)
             {
+                var touch = Touchscreen.current.touches[i];
+                touchInUse |= touch.press.isPressed || touch.press.wasReleasedThisFrame;
                 if (!touch.press.wasPressedThisFrame) continue;
-                TryTap(touch.position.ReadValue());
+                BeginGesture(touch.startPosition.ReadValue());
+                gestureIsTouch = true;
+                gestureTouchIndex = i;
+                gestureTouchId = touch.touchId.ReadValue();
+                if (gestureActive) UpdateGesture();
+                return;
+            }
+            if (touchInUse) return;
+        }
+
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        {
+            BeginGesture(Mouse.current.position.ReadValue());
+            gestureIsTouch = false;
+            if (gestureActive) UpdateGesture();
+        }
+    }
+
+    private void BeginGesture(Vector2 screenPosition)
+    {
+        if (ui.IsPointerOverUI(screenPosition)) return;
+        if (currentLevelIndex == 1 && !ui.GameplayScreenArea(true).Contains(screenPosition)) return;
+        gestureActive = true;
+        gestureStartScreen = screenPosition;
+        gestureStartWorld = mainCamera.ScreenToWorldPoint(screenPosition);
+        gestureMaxDistanceSquared = 0f;
+        gestureState = state;
+        gestureRoom = state == PuzzleGameState.Playing &&
+            PuzzleSwipeResolver.ContainsRoom(level, currentRoom, gestureStartWorld) ? currentRoom : -1;
+    }
+
+    private void UpdateGesture()
+    {
+        Vector2 position;
+        bool released;
+        if (gestureIsTouch)
+        {
+            Touchscreen screen = Touchscreen.current;
+            if (screen == null || gestureTouchIndex >= screen.touches.Count)
+            {
+                CancelGesture();
+                return;
+            }
+            var touch = screen.touches[gestureTouchIndex];
+            if (touch.touchId.ReadValue() != gestureTouchId ||
+                touch.phase.ReadValue() == UnityEngine.InputSystem.TouchPhase.Canceled)
+            {
+                CancelGesture();
+                return;
+            }
+            position = touch.position.ReadValue();
+            released = touch.press.wasReleasedThisFrame;
+            if (!touch.press.isPressed && !released)
+            {
+                CancelGesture();
+                return;
+            }
+        }
+        else
+        {
+            if (Mouse.current == null)
+            {
+                CancelGesture();
+                return;
+            }
+            position = Mouse.current.position.ReadValue();
+            released = Mouse.current.leftButton.wasReleasedThisFrame;
+            if (!Mouse.current.leftButton.isPressed && !released)
+            {
+                CancelGesture();
                 return;
             }
         }
 
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            TryTap(Mouse.current.position.ReadValue());
+        gestureMaxDistanceSquared = Mathf.Max(gestureMaxDistanceSquared,
+            (position - gestureStartScreen).sqrMagnitude);
+        if (released) EndGesture(position);
+    }
+
+    private void EndGesture(Vector2 screenPosition)
+    {
+        // Clear first: state changes and movement also cancel any pending gesture.
+        gestureActive = false;
+        if (!CanAcceptGameplayInput() || state != gestureState || ui.IsPointerOverUI(screenPosition)) return;
+        float threshold = Mathf.Max(1f, minSwipeDistance);
+        if (gestureMaxDistanceSquared < threshold * threshold)
+        {
+            TryTap(gestureStartScreen);
+            return;
+        }
+        if (state != PuzzleGameState.Playing || gestureRoom != currentRoom) return;
+        Vector2 end = mainCamera.ScreenToWorldPoint(screenPosition);
+        int door = PuzzleSwipeResolver.FindDoor(level, currentRoom,
+            gestureStartWorld, end, CanUseDoor);
+        if (door >= 0) TryMoveThroughDoor(door);
+    }
+
+    private void CancelGesture()
+    {
+        gestureActive = false;
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused) CancelGesture();
+    }
+
+    private void OnApplicationPause(bool paused)
+    {
+        if (paused) CancelGesture();
+    }
+
+    private void OnDisable() => CancelGesture();
+
+    private bool CanUseDoor(int index)
+    {
+        return state == PuzzleGameState.Playing && !busy && level != null &&
+            index >= 0 && index < level.Doors.Length &&
+            (closedDoors & (1 << index)) == 0 && level.Doors[index].CanTraverseFrom(currentRoom);
+    }
+
+    private bool TryMoveThroughDoor(int index)
+    {
+        if (!CanUseDoor(index)) return false;
+        CancelGesture();
+        StartCoroutine(CrossDoor(index));
+        return true;
     }
 
     private void LateUpdate()
@@ -119,7 +264,10 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         if (level == null) return;
         Rect area = ui.GameplayScreenArea(currentLevelIndex == 1);
         if (area != lastCameraArea || lastCameraScreenSize != new Vector2Int(Screen.width, Screen.height))
+        {
+            CancelGesture();
             FitPuzzleCamera(area);
+        }
     }
 
     private void TryTap(Vector2 screenPosition)
@@ -153,9 +301,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
                 }
             }
             if (nearest == null) return;
-            int selected = nearest.Index;
-            if ((closedDoors & (1 << selected)) != 0 || !level.Doors[selected].CanTraverseFrom(currentRoom)) return;
-            StartCoroutine(CrossDoor(selected));
+            TryMoveThroughDoor(nearest.Index);
             return;
         }
 
@@ -164,13 +310,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             DoorView view = hit.GetComponent<DoorView>();
             if (view == null) continue;
 
-            int index = view.Index;
-            DoorDefinition door = level.Doors[index];
-            if ((closedDoors & (1 << index)) != 0 || !door.CanTraverseFrom(currentRoom))
-                continue;
-
-            StartCoroutine(CrossDoor(index));
-            return;
+            if (TryMoveThroughDoor(view.Index)) return;
         }
     }
 
@@ -195,10 +335,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private IEnumerator CrossDoor(int index)
     {
+        if (!CanUseDoor(index)) yield break;
         DoorDefinition door = level.Doors[index];
-        if (!CanAcceptGameplayInput() || (closedDoors & (1 << index)) != 0 ||
-            !door.CanTraverseFrom(currentRoom))
-            yield break;
         busy = true;
         Vector3 crossing = new Vector3(door.Position.x, door.Position.y, 0);
         int nextRoom = door.OtherRoom(currentRoom);
@@ -354,6 +492,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void SetState(PuzzleGameState nextState)
     {
+        CancelGesture();
         state = nextState;
         music.PlayForState(nextState, currentLevelIndex);
         ui.ShowState(nextState);
@@ -363,6 +502,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void ClearPuzzle()
     {
+        CancelGesture();
         if (soundEffects != null) soundEffects.Stop();
         if (levelRoot != null)
         {
