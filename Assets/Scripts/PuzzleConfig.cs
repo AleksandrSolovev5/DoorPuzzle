@@ -12,6 +12,9 @@ public enum PuzzleTheme
     Rose
 }
 
+public enum PuzzleAtmosphere { Light, Dusk }
+public enum PuzzleRoomLayout { Compact, WideRooms, TallRooms }
+
 // All degree settings count interior doors only; EXIT is never a neighbour.
 // DoorCount includes EXIT. DeadEndCount counts non-exit rooms with one
 // interior door. Branching: 0 = any, 1 = three doors in one room,
@@ -30,12 +33,24 @@ public sealed class PuzzleConfig
     public readonly int PreferredStartMinDegree;
     public readonly int MinBranchingRooms;
     public readonly int MinWrongStartSurvivalMoves;
+    public readonly PuzzleAtmosphere Atmosphere;
+    public readonly PuzzleRoomLayout RoomLayout;
+    public readonly int LongRoomSpan;
+    public readonly int MinElongatedRooms;
+    public readonly int MinDistinctBranchingRooms;
+    public readonly int OneWayDoorCount; // Internal doors only; 0, 1 or 2.
+    public readonly float MaxLayoutAspectRatio; // 0 keeps the existing layout rules.
 
     public PuzzleConfig(int roomCount, int doorCount, int deadEndCount,
         int branching, int seed, PuzzleTheme visualTheme,
         bool allowLeafRooms = false, int minRoomDegree = 2,
         int preferredStartMinDegree = 3, int minBranchingRooms = 1,
-        int minWrongStartSurvivalMoves = 0)
+        int minWrongStartSurvivalMoves = 0,
+        PuzzleAtmosphere atmosphere = PuzzleAtmosphere.Light,
+        PuzzleRoomLayout roomLayout = PuzzleRoomLayout.Compact,
+        int longRoomSpan = 2, int minElongatedRooms = 0,
+        int minDistinctBranchingRooms = 0, int oneWayDoorCount = 0,
+        float maxLayoutAspectRatio = 0f)
     {
         RoomCount = roomCount;
         DoorCount = doorCount;
@@ -48,6 +63,13 @@ public sealed class PuzzleConfig
         PreferredStartMinDegree = preferredStartMinDegree;
         MinBranchingRooms = minBranchingRooms;
         MinWrongStartSurvivalMoves = minWrongStartSurvivalMoves;
+        Atmosphere = atmosphere;
+        RoomLayout = roomLayout;
+        LongRoomSpan = longRoomSpan;
+        MinElongatedRooms = minElongatedRooms;
+        MinDistinctBranchingRooms = minDistinctBranchingRooms;
+        OneWayDoorCount = oneWayDoorCount;
+        MaxLayoutAspectRatio = maxLayoutAspectRatio;
     }
 }
 

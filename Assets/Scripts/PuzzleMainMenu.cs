@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 // Presentation for the home screen only; gameplay and puzzle data stay in PuzzleUI.
@@ -13,9 +14,13 @@ public sealed class PuzzleMainMenu : MonoBehaviour
     private static Sprite gearSprite;
     private static Sprite playSprite;
     private RectTransform composition;
+    private CanvasGroup menuInteraction;
+    private GameObject settingsPanel;
     private Font font;
 
-    public void Build(Font uiFont, UnityAction onPlay)
+    public void Build(Font uiFont, UnityAction onPlay,
+        UnityAction<bool> onMusicChanged, UnityAction<bool> onSoundChanged,
+        UnityAction onSelectPuzzle)
     {
         font = uiFont;
         EnsureSprites();
@@ -31,13 +36,18 @@ public sealed class PuzzleMainMenu : MonoBehaviour
 
         composition = Container(transform, "Menu Composition", Vector2.zero,
             new Vector2(1080, 1920));
-        BuildBoard(composition, new Vector2(0, 320));
-        Label(composition, "Title", "DOOR PUZZLE", 104, new Vector2(0, -118),
+        RectTransform menu = Container(composition, "Main Menu Content", Vector2.zero,
+            new Vector2(1080, 1920));
+        menuInteraction = menu.gameObject.AddComponent<CanvasGroup>();
+        BuildBoard(menu, new Vector2(0, 320));
+        Label(menu, "Title", "DOOR PUZZLE", 104, new Vector2(0, -118),
             new Vector2(1000, 140), Ink, false);
-        Label(composition, "Tagline", "Choose. Cross. Close.", 38, new Vector2(0, -220),
+        Label(menu, "Tagline", "Choose. Cross. Close.", 38, new Vector2(0, -220),
             new Vector2(880, 70), Muted, false);
-        BuildPlayButton(composition, onPlay);
-        BuildSettingsButton(composition);
+        BuildPlayButton(menu, onPlay);
+        BuildSelectPuzzleButton(menu, onSelectPuzzle);
+        BuildSettingsButton(menu);
+        BuildSettingsPanel(onMusicChanged, onSoundChanged);
         FitComposition();
     }
 
@@ -81,9 +91,94 @@ public sealed class PuzzleMainMenu : MonoBehaviour
             size - Vector2.one * 3, new Color32(243, 248, 249, 255),
             PuzzleVisualStyle.CircleSprite);
         face.raycastTarget = true;
-        AddButton(face, null); // Intentional placeholder: no settings panel or callback.
+        AddButton(face, OpenSettings);
         ImageAt(face.transform, "Gear", Vector2.zero, new Vector2(52, 52),
             new Color32(108, 140, 155, 255), gearSprite);
+    }
+
+    private void BuildSelectPuzzleButton(Transform parent, UnityAction onClick)
+    {
+        Image face = ImageAt(parent, "Select Puzzle", new Vector2(0, -600),
+            new Vector2(632, 104), PuzzleVisualStyle.Secondary, PuzzleVisualStyle.RoundedSprite);
+        face.pixelsPerUnitMultiplier = 0.4f;
+        AddButton(face, onClick);
+        Label(face.transform, "Label", "SELECT PUZZLE", 34, Vector2.zero,
+            new Vector2(580, 90), Ink, true);
+    }
+
+    private void BuildSettingsPanel(UnityAction<bool> onMusicChanged,
+        UnityAction<bool> onSoundChanged)
+    {
+        Image overlay = ImageAt(composition, "SettingsPanel", Vector2.zero,
+            new Vector2(1080, 1920), PuzzleVisualStyle.Overlay, null);
+        overlay.raycastTarget = true;
+        settingsPanel = overlay.gameObject;
+        Shadow(overlay.transform, "Settings Card Shadow", new Vector2(0, -14),
+            new Vector2(760, 570), 0.18f);
+        Image card = ImageAt(overlay.transform, "Settings Card", Vector2.zero,
+            new Vector2(760, 570), PuzzleVisualStyle.Surface, PuzzleVisualStyle.RoundedSprite);
+        card.pixelsPerUnitMultiplier = 0.4f;
+        Label(card.transform, "Title", "SETTINGS", 60, new Vector2(0, 190),
+            new Vector2(640, 90), Ink, false);
+        BuildAudioToggle(card.transform, "MUSIC", 50, onMusicChanged);
+        BuildAudioToggle(card.transform, "SOUND", -76, onSoundChanged);
+        Image close = ImageAt(card.transform, "Close Settings", new Vector2(0, -202),
+            new Vector2(580, 96), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
+        AddButton(close, CloseSettings);
+        Label(close.transform, "Label", "CLOSE", 36, Vector2.zero,
+            new Vector2(500, 80), Color.white, true);
+        settingsPanel.SetActive(false);
+    }
+
+    private void BuildAudioToggle(Transform parent, string caption, float y,
+        UnityAction<bool> onChanged)
+    {
+        Image row = ImageAt(parent, caption + " Toggle", new Vector2(0, y),
+            new Vector2(580, 104), PuzzleVisualStyle.Secondary, PuzzleVisualStyle.RoundedSprite);
+        row.raycastTarget = true;
+        Label(row.transform, "Label", caption, 34, new Vector2(-150, 0),
+            new Vector2(230, 80), Ink, true);
+        Image track = ImageAt(row.transform, "Switch Track", new Vector2(180, 0),
+            new Vector2(148, 68), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
+        Image knob = ImageAt(track.transform, "Switch Knob", new Vector2(38, 0),
+            new Vector2(52, 52), Color.white, PuzzleVisualStyle.CircleSprite);
+        Label(row.transform, "Status", "ON", 28, new Vector2(46, 0),
+            new Vector2(90, 72), PuzzleVisualStyle.Primary, true);
+        Text status = row.transform.Find("Status").GetComponent<Text>();
+        Toggle toggle = row.gameObject.AddComponent<Toggle>();
+        toggle.targetGraphic = row;
+        toggle.transition = Selectable.Transition.None;
+        toggle.toggleTransition = Toggle.ToggleTransition.None;
+        toggle.SetIsOnWithoutNotify(true);
+        toggle.onValueChanged.AddListener(enabled =>
+        {
+            track.color = enabled ? PuzzleVisualStyle.Primary : PuzzleVisualStyle.Border;
+            knob.rectTransform.anchoredPosition = new Vector2(enabled ? 38 : -38, 0);
+            status.text = enabled ? "ON" : "OFF";
+            status.color = enabled ? PuzzleVisualStyle.Primary : Muted;
+            if (onChanged != null) onChanged(enabled);
+        });
+    }
+
+    private void OpenSettings()
+    {
+        menuInteraction.interactable = false;
+        menuInteraction.blocksRaycasts = false;
+        settingsPanel.SetActive(true);
+        if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+    }
+
+    private void CloseSettings()
+    {
+        settingsPanel.SetActive(false);
+        menuInteraction.interactable = true;
+        menuInteraction.blocksRaycasts = true;
+        if (EventSystem.current != null) EventSystem.current.SetSelectedGameObject(null);
+    }
+
+    private void OnDisable()
+    {
+        if (settingsPanel != null) CloseSettings();
     }
 
     private void BuildBoard(Transform parent, Vector2 position)

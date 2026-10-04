@@ -29,6 +29,44 @@ public static class PuzzleSolver
         return winning;
     }
 
+    // A witness route lets the generator orient doors without destroying all solutions.
+    public static bool TryFindWinningRoute(LevelDefinition puzzle, out int startRoom,
+        out int[] doorOrder)
+    {
+        HashSet<long> failed = new HashSet<long>();
+        List<int> route = new List<int>();
+        for (int room = 0; room < puzzle.Rooms.Length; room++)
+        {
+            if (!Search(puzzle, room, 0, failed, -1, route)) continue;
+            startRoom = room;
+            doorOrder = route.ToArray();
+            return true;
+        }
+        startRoom = -1;
+        doorOrder = null;
+        return false;
+    }
+
+    // Every arrow must remove an otherwise winning alternative from a valid start.
+    // Reverse just this door; keep every other arrow and EXIT-last constraint.
+    public static bool HasMeaningfulOneWayDoors(LevelDefinition puzzle, bool[] winningStarts)
+    {
+        for (int i = 0; i < puzzle.Doors.Length; i++)
+        {
+            if (!puzzle.Doors[i].IsOneWay) continue;
+            bool reverseWasUseful = false;
+            HashSet<long> failed = new HashSet<long>();
+            for (int room = 0; room < winningStarts.Length; room++)
+            {
+                if (!winningStarts[room] || !Search(puzzle, room, 0, failed, i)) continue;
+                reverseWasUseful = true;
+                break;
+            }
+            if (!reverseWasUseful) return false;
+        }
+        return true;
+    }
+
     // Longest sequence of interior-door moves from this start before the
     // physical dead-end detector reports a loss. EXIT is excluded because
     // deliberately closing it early is not a plausible route.
@@ -48,7 +86,7 @@ public static class PuzzleSolver
         for (int i = 0; i < puzzle.Doors.Length; i++)
         {
             DoorDefinition door = puzzle.Doors[i];
-            if (door.IsExit || !door.Touches(room) || (closed & (1 << i)) != 0)
+            if (door.IsExit || !door.CanTraverseFrom(room) || (closed & (1 << i)) != 0)
                 continue;
             int moves = 1 + CountSurvivalMoves(puzzle, door.OtherRoom(room),
                 closed | (1 << i), memo);
@@ -60,7 +98,7 @@ public static class PuzzleSolver
     }
 
     private static bool Search(LevelDefinition puzzle, int room, int closed,
-        HashSet<long> failed)
+        HashSet<long> failed, int reverseDoor = -1, List<int> route = null)
     {
         long state = ((long)closed << 16) | (uint)room;
         if (failed.Contains(state)) return false;
@@ -70,15 +108,26 @@ public static class PuzzleSolver
         {
             int bit = 1 << i;
             DoorDefinition door = puzzle.Doors[i];
-            if ((closed & bit) != 0 || !door.Touches(room)) continue;
+            bool canTraverse = i == reverseDoor
+                ? room == door.AllowedToRoom : door.CanTraverseFrom(room);
+            if ((closed & bit) != 0 || !canTraverse) continue;
 
             int nextClosed = closed | bit;
             if (door.IsExit)
             {
-                if (nextClosed == allClosed) return true;
+                if (nextClosed == allClosed)
+                {
+                    route?.Add(i);
+                    return true;
+                }
             }
-            else if (Search(puzzle, door.OtherRoom(room), nextClosed, failed))
-                return true;
+            else
+            {
+                route?.Add(i);
+                if (Search(puzzle, door.OtherRoom(room), nextClosed, failed, reverseDoor, route))
+                    return true;
+                if (route != null) route.RemoveAt(route.Count - 1);
+            }
         }
 
         failed.Add(state);
@@ -108,7 +157,7 @@ public static class PuzzleSolver
             for (int i = 0; i < level.Doors.Length; i++)
             {
                 DoorDefinition door = level.Doors[i];
-                if ((closedDoors & (1 << i)) != 0 || door.IsExit || !door.Touches(room))
+                if ((closedDoors & (1 << i)) != 0 || door.IsExit || !door.CanTraverseFrom(room))
                     continue;
 
                 int nextRoom = door.OtherRoom(room);
@@ -118,12 +167,14 @@ public static class PuzzleSolver
             }
         }
 
-        // A door is lost only if neither of its rooms can be reached anymore.
+        // A one-way door is lost if its permitted entrance is unreachable,
+        // even when its destination room can still be reached.
         for (int i = 0; i < level.Doors.Length; i++)
         {
             if ((closedDoors & (1 << i)) != 0) continue;
             DoorDefinition door = level.Doors[i];
-            if (!reachable[door.RoomA] &&
+            if (door.IsOneWay ? !reachable[door.AllowedFromRoom] :
+                !reachable[door.RoomA] &&
                 (door.RoomB < 0 || !reachable[door.RoomB]))
                 return true;
         }

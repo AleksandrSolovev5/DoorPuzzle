@@ -11,17 +11,32 @@ public enum PuzzleGameState
     PuzzleComplete,
     Lose,
     LevelComplete,
-    GameComplete
+    GameComplete,
+    PuzzleSelection
 }
 
 public sealed class DoorPuzzleGame : MonoBehaviour
 {
+    [Header("Background music")]
+    [SerializeField] private AudioClip menuMusic;
+    [SerializeField] private AudioClip level1Music;
+    [SerializeField] private AudioClip level2Music;
+
+    [Header("Sound effects")]
+    [SerializeField] private AudioClip doorCloseSound;
+    [SerializeField] private AudioClip puzzleCompleteSound;
+    [SerializeField, Range(0f, 1f)] private float soundEffectsVolume = 0.8f;
+
     private const float PlayerMoveSpeed = 4.5f;
     private static Sprite squareSprite;
     private static Sprite circleSprite;
 
     private Camera mainCamera;
     private PuzzleUI ui;
+    private PuzzleMusic music;
+    private AudioSource soundEffects;
+    private bool soundEnabled = true;
+    private PuzzleProgress progress;
     private LevelDefinition level;
     private GameObject levelRoot;
     private GameObject startRoomHints;
@@ -35,6 +50,9 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private int closedCount;
     private PuzzleGameState state;
     private bool busy;
+    private Rect lastCameraArea;
+    private Vector2Int lastCameraScreenSize;
+    private Bounds level2VisualBounds;
 
     private void Awake()
     {
@@ -53,9 +71,26 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
         mainCamera.backgroundColor = PuzzleVisualStyle.Background;
         CreateSprites();
+        if (progress == null)
+            progress = new PuzzleProgress(LevelCatalog.PuzzleCount,
+                PlayerPrefs.GetInt(PuzzleProgress.SaveKey, 0), completed =>
+                {
+                    PlayerPrefs.SetInt(PuzzleProgress.SaveKey, completed);
+                    // Persist at victory, before NEXT or an application shutdown.
+                    PlayerPrefs.Save();
+                });
         ui = gameObject.AddComponent<PuzzleUI>();
-        ui.Build(StartGame, RestartPuzzle, NextPuzzle, NextLevel, ReturnHome);
+        ui.Build(StartGame, RestartPuzzle, NextPuzzle, NextLevel, ReturnHome,
+            SetMusicEnabled, SetSoundEnabled, OpenPuzzleSelection, SelectPuzzle, progress);
         generatedPuzzles = new LevelDefinition[LevelCatalog.Levels.Length][];
+        music = gameObject.AddComponent<PuzzleMusic>();
+        music.Initialize(menuMusic, level1Music, level2Music);
+        soundEffects = gameObject.AddComponent<AudioSource>();
+        soundEffects.playOnAwake = false;
+        soundEffects.loop = false;
+        soundEffects.spatialBlend = 0f;
+        if (doorCloseSound == null || puzzleCompleteSound == null)
+            Debug.LogWarning("Sound effect references are missing on DoorPuzzleGame in the main scene.");
         ShowMainMenu();
     }
 
@@ -79,9 +114,18 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             TryTap(Mouse.current.position.ReadValue());
     }
 
+    private void LateUpdate()
+    {
+        if (level == null) return;
+        Rect area = ui.GameplayScreenArea(currentLevelIndex == 1);
+        if (area != lastCameraArea || lastCameraScreenSize != new Vector2Int(Screen.width, Screen.height))
+            FitPuzzleCamera(area);
+    }
+
     private void TryTap(Vector2 screenPosition)
     {
         if (!CanAcceptGameplayInput() || ui.IsPointerOverUI(screenPosition)) return;
+        if (currentLevelIndex == 1 && !ui.GameplayScreenArea(true).Contains(screenPosition)) return;
 
         Vector3 world = mainCamera.ScreenToWorldPoint(screenPosition);
         if (state == PuzzleGameState.ChooseStartRoom)
@@ -90,14 +134,39 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             return;
         }
 
-        foreach (Collider2D hit in Physics2D.OverlapPointAll(new Vector2(world.x, world.y)))
+        Collider2D[] hits = Physics2D.OverlapPointAll(new Vector2(world.x, world.y));
+        if (currentLevelIndex == 1)
+        {
+            // Stable nearest ownership also handles a boundary hit. Do not skip
+            // a blocked arrow in favour of a neighbouring usable door.
+            DoorView nearest = null;
+            float distance = float.PositiveInfinity;
+            foreach (Collider2D hit in hits)
+            {
+                DoorView view = hit.GetComponent<DoorView>();
+                if (view == null) continue;
+                float candidate = ((Vector2)world - level.Doors[view.Index].Position).sqrMagnitude;
+                if (candidate < distance || (candidate == distance && nearest != null && view.Index < nearest.Index))
+                {
+                    nearest = view;
+                    distance = candidate;
+                }
+            }
+            if (nearest == null) return;
+            int selected = nearest.Index;
+            if ((closedDoors & (1 << selected)) != 0 || !level.Doors[selected].CanTraverseFrom(currentRoom)) return;
+            StartCoroutine(CrossDoor(selected));
+            return;
+        }
+
+        foreach (Collider2D hit in hits)
         {
             DoorView view = hit.GetComponent<DoorView>();
             if (view == null) continue;
 
             int index = view.Index;
             DoorDefinition door = level.Doors[index];
-            if ((closedDoors & (1 << index)) != 0 || !door.Touches(currentRoom))
+            if ((closedDoors & (1 << index)) != 0 || !door.CanTraverseFrom(currentRoom))
                 continue;
 
             StartCoroutine(CrossDoor(index));
@@ -126,8 +195,11 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private IEnumerator CrossDoor(int index)
     {
-        busy = true;
         DoorDefinition door = level.Doors[index];
+        if (!CanAcceptGameplayInput() || (closedDoors & (1 << index)) != 0 ||
+            !door.CanTraverseFrom(currentRoom))
+            yield break;
+        busy = true;
         Vector3 crossing = new Vector3(door.Position.x, door.Position.y, 0);
         int nextRoom = door.OtherRoom(currentRoom);
         Vector3 destination;
@@ -145,6 +217,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         yield return MovePlayerThroughDoor(crossing, destination);
 
         currentRoom = nextRoom;
+        PlaySoundEffect(doorCloseSound);
         yield return doorViews[index].AnimateClosed(0.35f);
         closedDoors |= 1 << index;
         closedCount++;
@@ -153,17 +226,41 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
         if (door.IsExit && closedCount == level.Doors.Length)
         {
-            if (currentPuzzleIndex + 1 < LevelCatalog.Levels[currentLevelIndex].Puzzles.Length)
-                SetState(PuzzleGameState.PuzzleComplete);
-            else if (currentLevelIndex + 1 < LevelCatalog.Levels.Length)
-                SetState(PuzzleGameState.LevelComplete);
-            else
-                SetState(PuzzleGameState.GameComplete);
+            CompletePuzzle();
         }
         else if (PuzzleSolver.IsDeadEnd(level, currentRoom, closedDoors))
         {
             SetState(PuzzleGameState.Lose);
         }
+    }
+
+    private void CompletePuzzle()
+    {
+        progress.Complete(LevelCatalog.ToPuzzleIndex(currentLevelIndex, currentPuzzleIndex));
+        PlaySoundEffect(puzzleCompleteSound);
+        if (currentPuzzleIndex + 1 < LevelCatalog.Levels[currentLevelIndex].Puzzles.Length)
+            SetState(PuzzleGameState.PuzzleComplete);
+        else if (currentLevelIndex + 1 < LevelCatalog.Levels.Length)
+            SetState(PuzzleGameState.LevelComplete);
+        else
+            SetState(PuzzleGameState.GameComplete);
+    }
+
+    private void PlaySoundEffect(AudioClip clip)
+    {
+        if (soundEnabled && clip != null) soundEffects.PlayOneShot(clip, soundEffectsVolume);
+    }
+
+    private void SetMusicEnabled(bool enabled)
+    {
+        music.SetMusicEnabled(enabled);
+    }
+
+    private void SetSoundEnabled(bool enabled)
+    {
+        soundEnabled = enabled;
+        soundEffects.mute = !enabled;
+        if (!enabled) soundEffects.Stop();
     }
 
     private IEnumerator MovePlayerThroughDoor(Vector3 crossing, Vector3 destination)
@@ -200,7 +297,23 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             return;
 
         StopAllCoroutines();
-        LoadPuzzle(0, 0);
+        // PLAY AGAIN retains its existing behavior; PLAY resumes the frontier.
+        int index = state == PuzzleGameState.GameComplete ? 0 : progress.PlayIndex;
+        if (LevelCatalog.TryGetPuzzle(index, out int levelIndex, out int puzzleIndex))
+            LoadPuzzle(levelIndex, puzzleIndex);
+    }
+
+    private void OpenPuzzleSelection()
+    {
+        if (state == PuzzleGameState.MainMenu) SetState(PuzzleGameState.PuzzleSelection);
+    }
+
+    private void SelectPuzzle(int index)
+    {
+        if (state != PuzzleGameState.PuzzleSelection || !progress.IsUnlocked(index)) return;
+        if (!LevelCatalog.TryGetPuzzle(index, out int levelIndex, out int puzzleIndex)) return;
+        StopAllCoroutines();
+        LoadPuzzle(levelIndex, puzzleIndex);
     }
 
     private void NextPuzzle()
@@ -217,7 +330,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void ReturnHome()
     {
-        if (state != PuzzleGameState.GameComplete) return;
         ShowMainMenu();
     }
 
@@ -243,6 +355,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private void SetState(PuzzleGameState nextState)
     {
         state = nextState;
+        music.PlayForState(nextState, currentLevelIndex);
         ui.ShowState(nextState);
         if (startRoomHints != null)
             startRoomHints.SetActive(nextState == PuzzleGameState.ChooseStartRoom);
@@ -250,6 +363,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void ClearPuzzle()
     {
+        if (soundEffects != null) soundEffects.Stop();
         if (levelRoot != null)
         {
             levelRoot.SetActive(false);
@@ -278,29 +392,93 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             generatedPuzzles[levelIndex][puzzleIndex] = PuzzleGenerator.Generate(config, name);
         }
         level = generatedPuzzles[levelIndex][puzzleIndex];
+        if (levelIndex == 1)
+            level = Level2Presentation.Prepare(level, ui.GameplayScreenArea(true), ui.PixelScale);
         currentRoom = -1;
         closedDoors = 0;
         closedCount = 0;
         player = null;
         busy = false;
         mainCamera.orthographic = true;
-        float halfWidth = 0;
-        foreach (RoomDefinition room in level.Rooms)
-            halfWidth = Mathf.Max(halfWidth, Mathf.Abs(room.Center.x) + room.Size.x * 0.5f);
-        foreach (DoorDefinition door in level.Doors)
-            if (door.IsExit)
-                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(door.Position.x) + 0.75f);
-        mainCamera.orthographicSize = Mathf.Max(level.CameraSize,
-            (halfWidth + 0.2f) / mainCamera.aspect);
-        mainCamera.transform.position = new Vector3(0, 0, -10);
-        mainCamera.backgroundColor = PuzzleVisualStyle.Background;
+        if (levelIndex != 1) FitPuzzleCamera(ui.GameplayScreenArea());
+        mainCamera.backgroundColor = level.Palette.Background;
+        ui.SetGameplayPalette(level.Palette);
 
         levelRoot = new GameObject(level.Name);
         levelRoot.transform.SetParent(transform, false);
         DrawRooms();
         DrawDoors();
+        if (levelIndex == 1)
+        {
+            level2VisualBounds = Level2Presentation.Measure(level);
+            // Actual drawings include wall thickness, shadows, open leaves,
+            // hinges, EXIT and arrow strokes; touch colliders are not visual bounds.
+            foreach (SpriteRenderer renderer in levelRoot.GetComponentsInChildren<SpriteRenderer>(true))
+                level2VisualBounds.Encapsulate(renderer.bounds);
+            FitPuzzleCamera(ui.GameplayScreenArea(true));
+        }
         RefreshProgress();
         SetState(PuzzleGameState.ChooseStartRoom);
+    }
+
+    private void FitPuzzleCamera(Rect area)
+    {
+        if (Screen.height <= 0 || Screen.width <= 0) return;
+        if (currentLevelIndex == 1)
+        {
+            FitLevel2Camera(area);
+            return;
+        }
+        Vector2 min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+        Vector2 max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+        foreach (RoomDefinition room in level.Rooms)
+        {
+            min = Vector2.Min(min, room.Center - room.Size * 0.5f);
+            max = Vector2.Max(max, room.Center + room.Size * 0.5f);
+        }
+        foreach (DoorDefinition door in level.Doors)
+        {
+            if (!door.IsExit) continue;
+            // Include the final step outside, even when the EXIT is on a long room.
+            min = Vector2.Min(min, door.Position - Vector2.one * 0.8f);
+            max = Vector2.Max(max, door.Position + Vector2.one * 0.8f);
+        }
+        min -= Vector2.one * 0.16f;
+        max += Vector2.one * 0.16f;
+        Vector2 size = max - min;
+        float pixelsPerUnit = Mathf.Min(area.width / size.x, area.height / size.y);
+        mainCamera.orthographicSize = Mathf.Max(level.CameraSize, Screen.height / (2f * pixelsPerUnit));
+        pixelsPerUnit = Screen.height / (2f * mainCamera.orthographicSize);
+        Vector2 center = (min + max) * 0.5f -
+            (area.center - new Vector2(Screen.width, Screen.height) * 0.5f) / pixelsPerUnit;
+        mainCamera.transform.position = new Vector3(center.x, center.y, -10);
+        lastCameraArea = area;
+        lastCameraScreenSize = new Vector2Int(Screen.width, Screen.height);
+    }
+
+    private void FitLevel2Camera(Rect area)
+    {
+        Bounds bounds = level2VisualBounds;
+        for (int pass = 0; pass < 3; pass++)
+        {
+            float pixels = Level2Presentation.FitPixels(bounds, area);
+            // No fixed CameraSize floor: small houses can really fill the viewport.
+            mainCamera.orthographicSize = Screen.height / (2f * pixels);
+            Vector2 center = (Vector2)bounds.center -
+                (area.center - new Vector2(Screen.width, Screen.height) * 0.5f) / pixels;
+            mainCamera.transform.position = new Vector3(center.x, center.y, -10);
+            Rect worldArea = Level2Presentation.WorldArea(bounds.center, area, pixels);
+            foreach (DoorView view in doorViews)
+            {
+                view.ConfigureLevel2Interaction(
+                    Level2Presentation.TouchPolygon(level, view.Index, pixels, ui.PixelScale, worldArea),
+                    pixels, Level2Presentation.MinimumArrowPixels(ui.PixelScale));
+                bounds.Encapsulate(view.DirectionBounds);
+            }
+        }
+        Physics2D.SyncTransforms();
+        lastCameraArea = area;
+        lastCameraScreenSize = new Vector2Int(Screen.width, Screen.height);
     }
 
     private void RefreshProgress()
@@ -318,9 +496,10 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         {
             RoomDefinition room = level.Rooms[i];
             Shape("Room shadow", room.Center + new Vector2(0.04f, -0.07f),
-                room.Size, PuzzleVisualStyle.Shadow, -1);
+                room.Size + Vector2.one * 0.22f, level.Palette.Shadow, -1,
+                PuzzleVisualStyle.RoomShadowSprite);
             SpriteRenderer floor = Shape("Room " + (i + 1) + " floor",
-                room.Center, room.Size, PuzzleVisualStyle.RoomColor(level.FloorColor), 0);
+                room.Center, room.Size, level.Palette.RoomColor(level.FloorColor), 0);
             BoxCollider2D roomArea = floor.gameObject.AddComponent<BoxCollider2D>();
             roomArea.size = Vector2.one;
             roomArea.isTrigger = true;
@@ -328,7 +507,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             float right = room.Center.x + room.Size.x * 0.5f;
             float bottom = room.Center.y - room.Size.y * 0.5f;
             float top = room.Center.y + room.Size.y * 0.5f;
-            Color wall = PuzzleVisualStyle.Wall;
+            Color wall = level.Palette.Wall;
             DrawWall(i, false, top, left, right, wall);
             DrawWall(i, false, bottom, left, right, wall);
             DrawWall(i, true, left, bottom, top, wall);
@@ -341,8 +520,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     {
         // Quiet corner marks show that every room can be selected. They have
         // no colliders and disappear after the player chooses a room.
-        Color color = Color.Lerp(PuzzleVisualStyle.RoomSurface,
-            PuzzleVisualStyle.Primary, 0.34f);
+        Color color = level.Palette.SelectionMarker;
         for (int x = -1; x <= 1; x += 2)
         for (int y = -1; y <= 1; y += 2)
         {
@@ -406,11 +584,13 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         for (int i = 0; i < level.Doors.Length; i++)
         {
             DoorDefinition door = level.Doors[i];
-            GameObject doorObject = new GameObject(door.IsExit ? "Exit Door" : "Door");
+            GameObject doorObject = new GameObject(door.IsExit ? "Exit Door" :
+                door.IsOneWay ? "One-way Door" : "Door");
             doorObject.transform.SetParent(levelRoot.transform, false);
             doorObject.transform.position = new Vector3(door.Position.x, door.Position.y, 0);
             DoorView view = doorObject.AddComponent<DoorView>();
-            view.Initialize(i, door, level.Rooms[door.RoomA].Center, squareSprite);
+            Vector2? otherCenter = door.RoomB >= 0 ? level.Rooms[door.RoomB].Center : (Vector2?)null;
+            view.Initialize(i, door, level.Rooms[door.RoomA].Center, squareSprite, otherCenter);
             doorViews[i] = view;
         }
     }
@@ -437,14 +617,14 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     }
 
     private SpriteRenderer Shape(string name, Vector2 center, Vector2 size, Color color,
-        int order)
+        int order, Sprite sprite = null)
     {
         GameObject objectWithSprite = new GameObject(name);
         objectWithSprite.transform.SetParent(levelRoot.transform, false);
         objectWithSprite.transform.position = new Vector3(center.x, center.y, 0);
         objectWithSprite.transform.localScale = new Vector3(size.x, size.y, 1);
         SpriteRenderer renderer = objectWithSprite.AddComponent<SpriteRenderer>();
-        renderer.sprite = squareSprite;
+        renderer.sprite = sprite != null ? sprite : squareSprite;
         renderer.color = color;
         renderer.sortingOrder = order;
         return renderer;

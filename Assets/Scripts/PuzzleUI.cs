@@ -17,6 +17,10 @@ public sealed class PuzzleUI : MonoBehaviour
     private Text puzzleText;
     private Text doorsText;
     private Text levelCompleteText;
+    private Text chooseStartText;
+    private Image doorCounter;
+    private Image headerRule;
+    private Canvas uiCanvas;
     private GameObject chooseStartHint;
     private GameObject mainMenuPanel;
     private GameObject gameplayPanel;
@@ -24,6 +28,8 @@ public sealed class PuzzleUI : MonoBehaviour
     private GameObject losePanel;
     private GameObject levelCompletePanel;
     private GameObject gameCompletePanel;
+    private GameObject puzzleSelectionPanel;
+    private PuzzleSelectionView puzzleSelection;
     private GameObject[] panels;
     private Font font;
     private Rect lastSafeArea;
@@ -31,7 +37,9 @@ public sealed class PuzzleUI : MonoBehaviour
     private int lastHeight = -1;
 
     public void Build(UnityAction onPlay, UnityAction onRestart,
-        UnityAction onNextPuzzle, UnityAction onNextLevel, UnityAction onHome)
+        UnityAction onNextPuzzle, UnityAction onNextLevel, UnityAction onHome,
+        UnityAction<bool> onMusicChanged, UnityAction<bool> onSoundChanged,
+        UnityAction onOpenSelection, UnityAction<int> onSelectPuzzle, PuzzleProgress progress)
     {
         font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (font == null) font = Font.CreateDynamicFontFromOSFont("Arial", 32);
@@ -48,6 +56,7 @@ public sealed class PuzzleUI : MonoBehaviour
             typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasObject.transform.SetParent(transform, false);
         Canvas canvas = canvasObject.GetComponent<Canvas>();
+        uiCanvas = canvas;
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 100;
         CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
@@ -63,11 +72,15 @@ public sealed class PuzzleUI : MonoBehaviour
         losePanel = MakePanel(root, "LosePanel", true, true);
         levelCompletePanel = MakePanel(root, "LevelCompletePanel", true, true);
         gameCompletePanel = MakePanel(root, "GameCompletePanel", true, true);
+        puzzleSelectionPanel = MakePanel(root, "PuzzleSelectionPanel", true, false);
         panels = new[] { mainMenuPanel, gameplayPanel, puzzleCompletePanel,
-            losePanel, levelCompletePanel, gameCompletePanel };
+            losePanel, levelCompletePanel, gameCompletePanel, puzzleSelectionPanel };
 
-        BuildMainMenu(onPlay);
-        BuildGameplayPanel(onRestart);
+        BuildMainMenu(onPlay, onMusicChanged, onSoundChanged, onOpenSelection);
+        BuildGameplayPanel(onRestart, onHome);
+        Transform selectionRoot = MakeSafeContent(puzzleSelectionPanel, "Content");
+        puzzleSelection = selectionRoot.gameObject.AddComponent<PuzzleSelectionView>();
+        puzzleSelection.Build(font, progress, onSelectPuzzle, onHome);
 
         Transform correct = MakeResultCard(puzzleCompletePanel, 592,
             PuzzleVisualStyle.Success, PuzzleVisualStyle.SuccessSoft, Icon.Check);
@@ -92,17 +105,25 @@ public sealed class PuzzleUI : MonoBehaviour
         MakeCenteredButton(gameComplete, "PLAY AGAIN", -84, onPlay, ButtonStyle.Primary, Icon.Play);
         MakeCenteredButton(gameComplete, "HOME", -220, onHome, ButtonStyle.Secondary, Icon.Home);
 
+        // Result overlays also offer a way home without having to retry or advance.
+        BuildHomeFooter(puzzleCompletePanel, onHome);
+        BuildHomeFooter(losePanel, onHome);
+        BuildHomeFooter(levelCompletePanel, onHome);
+
         UpdateSafeAreas();
         ShowState(PuzzleGameState.MainMenu);
     }
 
-    private void BuildMainMenu(UnityAction onPlay)
+    private void BuildMainMenu(UnityAction onPlay,
+        UnityAction<bool> onMusicChanged, UnityAction<bool> onSoundChanged,
+        UnityAction onSelectPuzzle)
     {
         Transform root = MakeSafeContent(mainMenuPanel, "Content");
-        root.gameObject.AddComponent<PuzzleMainMenu>().Build(font, onPlay);
+        root.gameObject.AddComponent<PuzzleMainMenu>().Build(font, onPlay,
+            onMusicChanged, onSoundChanged, onSelectPuzzle);
     }
 
-    private void BuildGameplayPanel(UnityAction onRestart)
+    private void BuildGameplayPanel(UnityAction onRestart, UnityAction onHome)
     {
         Transform root = MakeSafeContent(gameplayPanel, "GameplayHUD");
         levelText = MakeText(root, "Level", 30, PuzzleVisualStyle.MutedText);
@@ -117,15 +138,17 @@ public sealed class PuzzleUI : MonoBehaviour
 
         GameObject counter = MakeSurface(root, "Door Counter", new Vector2(0.5f, 1),
             new Vector2(316, -104), new Vector2(248, 86), PuzzleVisualStyle.Surface, false);
+        doorCounter = counter.GetComponent<Image>();
         doorsText = MakeText(counter.transform, "Doors", 32, PuzzleVisualStyle.Text);
         Stretch(doorsText.rectTransform);
 
-        MakeImage(root, "Header Rule", new Vector2(0.5f, 1), new Vector2(0, -180),
+        headerRule = MakeImage(root, "Header Rule", new Vector2(0.5f, 1), new Vector2(0, -180),
             new Vector2(880, 2), PuzzleVisualStyle.Border);
 
         chooseStartHint = MakeSurface(root, "Choose Start Room", new Vector2(0.5f, 1),
             new Vector2(0, -246), new Vector2(620, 76), PuzzleVisualStyle.PrimarySoft, false);
         Text hint = MakeText(chooseStartHint.transform, "Label", 30, PuzzleVisualStyle.Primary);
+        chooseStartText = hint;
         hint.fontStyle = FontStyle.Bold;
         hint.text = "CHOOSE START ROOM";
         float hintWidth = hint.preferredWidth;
@@ -134,8 +157,17 @@ public sealed class PuzzleUI : MonoBehaviour
         MakeIcon(chooseStartHint.transform, Icon.Door,
             new Vector2(-(hintWidth + 20) * 0.5f, 0), 28, PuzzleVisualStyle.Primary);
 
-        MakeButton(root, "RESTART", new Vector2(0.5f, 0), new Vector2(0, 92),
+        MakeButton(root, "RESTART", new Vector2(0.5f, 0), new Vector2(-220, 92),
             new Vector2(360, 100), onRestart, ButtonStyle.Secondary, Icon.Restart);
+        MakeButton(root, "HOME", new Vector2(0.5f, 0), new Vector2(220, 92),
+            new Vector2(360, 100), onHome, ButtonStyle.Secondary, Icon.Home);
+    }
+
+    private void BuildHomeFooter(GameObject panel, UnityAction onHome)
+    {
+        Transform root = MakeSafeContent(panel, "Home Footer");
+        MakeButton(root, "HOME", new Vector2(0.5f, 0), new Vector2(0, 92),
+            new Vector2(360, 100), onHome, ButtonStyle.Secondary, Icon.Home);
     }
 
     private Transform MakeResultCard(GameObject panel, float height, Color accent,
@@ -165,6 +197,33 @@ public sealed class PuzzleUI : MonoBehaviour
             label.text = "LEVEL " + levelNumber + "  /  PUZZLE " + puzzleNumber + "/" + puzzleCount;
     }
 
+    public void SetGameplayPalette(PuzzlePalette palette)
+    {
+        levelText.color = palette.MutedText;
+        puzzleText.color = palette.HeaderText;
+        doorsText.color = palette.HeaderText;
+        doorCounter.color = palette.HudSurface;
+        headerRule.color = palette.HeaderRule;
+        chooseStartText.color = palette.HintText;
+        foreach (Image image in chooseStartHint.GetComponentsInChildren<Image>(true))
+            image.color = image.gameObject == chooseStartHint ? palette.HintSurface : palette.HintText;
+    }
+
+    public float PixelScale => uiCanvas.scaleFactor;
+
+    public Rect GameplayScreenArea(bool spacious = false)
+    {
+        // Reserve the same HUD and footer spacing for both level atmospheres.
+        // ScreenSpaceOverlay canvas units become pixels through its scale factor.
+        float scale = uiCanvas.scaleFactor;
+        Rect safe = Screen.safeArea;
+        float side = Mathf.Min((spacious ? 20f : 60f) * scale, safe.width * 0.12f);
+        float top = spacious ? 300f * scale : Mathf.Min(310f * scale, safe.height * 0.28f);
+        float bottom = spacious ? 158f * scale : Mathf.Min(174f * scale, safe.height * 0.18f);
+        return new Rect(safe.xMin + side, safe.yMin + bottom,
+            Mathf.Max(1f, safe.width - side * 2f), Mathf.Max(1f, safe.height - top - bottom));
+    }
+
     public void ShowState(PuzzleGameState state)
     {
         GameObject activePanel;
@@ -185,6 +244,10 @@ public sealed class PuzzleUI : MonoBehaviour
                 break;
             case PuzzleGameState.GameComplete:
                 activePanel = gameCompletePanel;
+                break;
+            case PuzzleGameState.PuzzleSelection:
+                puzzleSelection.Refresh();
+                activePanel = puzzleSelectionPanel;
                 break;
             default:
                 activePanel = mainMenuPanel;

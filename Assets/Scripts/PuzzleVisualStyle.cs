@@ -19,6 +19,10 @@ public static class PuzzleVisualStyle
     public static readonly Color Wall = Rgb(96, 119, 124);
     public static readonly Color DoorOpen = Rgb(214, 154, 80);
     public static readonly Color DoorClosed = Rgb(160, 175, 178);
+    public static readonly Color OneWayOpen = Rgb(154, 143, 186);
+    public static readonly Color OneWayClosed = Rgb(127, 130, 151);
+    public static readonly Color OneWayMarker = Rgb(78, 73, 104);
+    public static readonly Color OneWayArrow = Rgb(244, 240, 250);
     public static readonly Color ExitOpen = Rgb(85, 139, 112);
     public static readonly Color ExitClosed = Rgb(139, 168, 151);
     public static readonly Color Player = Rgb(72, 123, 178);
@@ -28,6 +32,8 @@ public static class PuzzleVisualStyle
     private static Sprite roundedSprite;
     private static Sprite circleSprite;
     private static Sprite restartSprite;
+    private static Sprite roomShadowSprite;
+    private static Sprite oneWayArrowSprite;
 
     public static Sprite RoundedSprite
     {
@@ -54,6 +60,81 @@ public static class PuzzleVisualStyle
             if (restartSprite == null) restartSprite = CreateRestartArrow();
             return restartSprite;
         }
+    }
+
+    public static Sprite RoomShadowSprite
+    {
+        get
+        {
+            if (roomShadowSprite == null) roomShadowSprite = CreateRoomShadow();
+            return roomShadowSprite;
+        }
+    }
+
+    public static Sprite OneWayArrowSprite
+    {
+        get
+        {
+            if (oneWayArrowSprite == null) oneWayArrowSprite = CreateOneWayArrow();
+            return oneWayArrowSprite;
+        }
+    }
+
+    private static Sprite CreateOneWayArrow()
+    {
+        // Font-independent, antialiased arrow pointing right; the view rotates it.
+        const int size = 256;
+        const float coordinates = 48f;
+        float pixelSize = coordinates / size;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        texture.name = "One-way Door Arrow";
+        texture.hideFlags = HideFlags.HideAndDontSave;
+        texture.filterMode = FilterMode.Trilinear;
+        texture.wrapMode = TextureWrapMode.Clamp;
+        Color[] pixels = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            Vector2 p = new Vector2(x + 0.5f - size * 0.5f, y + 0.5f - size * 0.5f) * pixelSize;
+            float distance = Mathf.Min(SegmentDistance(p, new Vector2(-15, 0), new Vector2(15, 0)),
+                Mathf.Min(SegmentDistance(p, new Vector2(4, 10), new Vector2(15, 0)),
+                    SegmentDistance(p, new Vector2(4, -10), new Vector2(15, 0)))) - 2.5f;
+            pixels[y * size + x] = new Color(1, 1, 1, Mathf.Clamp01(0.5f - distance / pixelSize));
+        }
+        texture.SetPixels(pixels);
+        texture.Apply(true, true);
+        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f), size, 0, SpriteMeshType.FullRect);
+        sprite.name = texture.name;
+        sprite.hideFlags = HideFlags.HideAndDontSave;
+        return sprite;
+    }
+
+    private static Sprite CreateRoomShadow()
+    {
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
+        texture.name = "Soft Room Shadow";
+        texture.hideFlags = HideFlags.HideAndDontSave;
+        texture.filterMode = FilterMode.Trilinear;
+        texture.wrapMode = TextureWrapMode.Clamp;
+        Color[] pixels = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            Vector2 p = new Vector2((x + 0.5f) / size - 0.5f, (y + 0.5f) / size - 0.5f);
+            Vector2 q = new Vector2(Mathf.Abs(p.x), Mathf.Abs(p.y)) - Vector2.one * 0.40f;
+            float distance = new Vector2(Mathf.Max(q.x, 0), Mathf.Max(q.y, 0)).magnitude;
+            float alpha = Mathf.Exp(-distance * distance / 0.002f);
+            pixels[y * size + x] = new Color(1, 1, 1, alpha);
+        }
+        texture.SetPixels(pixels);
+        texture.Apply(true, true);
+        roomShadowSprite = Sprite.Create(texture, new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f), size, 0, SpriteMeshType.FullRect);
+        roomShadowSprite.name = texture.name;
+        roomShadowSprite.hideFlags = HideFlags.HideAndDontSave;
+        return roomShadowSprite;
     }
 
     public static Color RoomColor(Color generatedTheme)

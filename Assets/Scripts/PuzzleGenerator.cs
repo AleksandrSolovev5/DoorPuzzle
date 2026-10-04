@@ -45,7 +45,13 @@ public static class PuzzleGenerator
             config.DeadEndCount < 0 || config.Branching < 0 || config.Branching > 2 ||
             config.MinRoomDegree < 1 || config.MinRoomDegree > 4 ||
             config.PreferredStartMinDegree < 1 || config.MinBranchingRooms < 0 ||
-            config.MinWrongStartSurvivalMoves < 0)
+            config.MinWrongStartSurvivalMoves < 0 || config.MinElongatedRooms < 0 ||
+            config.MinDistinctBranchingRooms < 0 ||
+            config.OneWayDoorCount < 0 || config.OneWayDoorCount > 2 ||
+            float.IsNaN(config.MaxLayoutAspectRatio) || float.IsInfinity(config.MaxLayoutAspectRatio) ||
+            (config.MaxLayoutAspectRatio != 0f && config.MaxLayoutAspectRatio < 1f) ||
+            !Enum.IsDefined(typeof(PuzzleRoomLayout), config.RoomLayout) ||
+            !Enum.IsDefined(typeof(PuzzleAtmosphere), config.Atmosphere))
             throw new ArgumentException("Invalid puzzle configuration for " + name);
 
         config = NormalizeConfig(config, name);
@@ -58,7 +64,10 @@ public static class PuzzleGenerator
         PuzzleConfig fallback = NormalizeConfig(new PuzzleConfig(config.RoomCount,
             config.DoorCount,
             config.DeadEndCount, 0, config.Seed, config.VisualTheme,
-            config.AllowLeafRooms, Math.Min(config.MinRoomDegree, 2), 2, 0, 0), name);
+            config.AllowLeafRooms, Math.Min(config.MinRoomDegree, 2), 2, 0, 0,
+            config.Atmosphere, config.RoomLayout, config.LongRoomSpan,
+            config.MinElongatedRooms, oneWayDoorCount: config.OneWayDoorCount,
+            maxLayoutAspectRatio: config.MaxLayoutAspectRatio), name);
         if (TryGenerate(fallback, name, MaxAttempts, out puzzle)) return puzzle;
 
         Debug.LogWarning(name + ": no variant met the requested configuration " +
@@ -83,6 +92,12 @@ public static class PuzzleGenerator
         int doorCount = Math.Min(Math.Max(config.DoorCount, minInteriorDoors + 1),
             maxDoors);
         int deadEnds = config.AllowLeafRooms ? config.DeadEndCount : 0;
+        int span = Math.Max(2, Math.Min(config.MaxLayoutAspectRatio > 0f ? 2 : 3, config.LongRoomSpan));
+        int elongated = config.RoomLayout == PuzzleRoomLayout.Compact ? 0 :
+            Math.Min(config.MinElongatedRooms, config.RoomCount <= 4 ? 2 : GridSize);
+        if (span != config.LongRoomSpan || elongated != config.MinElongatedRooms)
+            Debug.LogWarning(name + ": incompatible room-size preferences; using span " +
+                span + " and at least " + elongated + " elongated rooms.");
         if (doorCount != config.DoorCount || deadEnds != config.DeadEndCount ||
             minDegree != config.MinRoomDegree)
             Debug.LogWarning(name + ": incompatible room/door/degree settings; " +
@@ -93,7 +108,9 @@ public static class PuzzleGenerator
             config.Branching, config.Seed, config.VisualTheme,
             config.AllowLeafRooms, minDegree,
             config.PreferredStartMinDegree, config.MinBranchingRooms,
-            config.MinWrongStartSurvivalMoves);
+            config.MinWrongStartSurvivalMoves, config.Atmosphere,
+            config.RoomLayout, span, elongated, config.MinDistinctBranchingRooms,
+            config.OneWayDoorCount, config.MaxLayoutAspectRatio);
     }
 
     private static int MinimumInteriorDoors(int roomCount, int minDegree,
@@ -166,7 +183,10 @@ public static class PuzzleGenerator
 
         PuzzleConfig fallback = new PuzzleConfig(cells.Count, edges.Count + 1,
             0, 0, original.Seed, original.VisualTheme,
-            false, 2, 2, 0, 0);
+            false, 2, 2, 0, 0, original.Atmosphere, original.RoomLayout,
+            original.LongRoomSpan, Math.Min(original.MinElongatedRooms, 2),
+            oneWayDoorCount: original.OneWayDoorCount,
+            maxLayoutAspectRatio: original.MaxLayoutAspectRatio);
         if (TryFinishGraph(fallback, name, cells, edges,
             new System.Random(original.Seed), out LevelDefinition result))
             return result;
@@ -182,7 +202,7 @@ public static class PuzzleGenerator
             System.Random random = new System.Random(unchecked(config.Seed * 1009 +
                 (attempt + attemptOffset) * 7919));
             List<Vector2Int> cells = CreateRoomPath(config.RoomCount, random);
-            if (cells == null) continue;
+            if (cells == null || !HasLayoutFootprint(config, cells)) continue;
 
             // Graph first: a path visits every room, then extra adjacent edges
             // create cycles, parallel doors, and choices.
@@ -240,6 +260,22 @@ public static class PuzzleGenerator
         return candidates;
     }
 
+    private static bool HasLayoutFootprint(PuzzleConfig config, List<Vector2Int> cells)
+    {
+        GetCellBounds(cells, out Vector2Int min, out Vector2Int max);
+        int width = max.x - min.x + 1;
+        int height = max.y - min.y + 1;
+        if (config.RoomLayout == PuzzleRoomLayout.Compact)
+        {
+            // Small lessons use a 2x2 block; five rooms use a tidy 2x3 footprint.
+            if (cells.Count <= 4) return width == 2 && height == 2;
+            if (cells.Count == 5) return width * height == 6;
+            return true;
+        }
+        // Later puzzles avoid a completely filled rectangle when possible.
+        return cells.Count == GridSize * GridSize || width * height > cells.Count;
+    }
+
     private static bool TryAddEdges(PuzzleConfig config, string name,
         List<Vector2Int> cells, List<Edge> candidates, List<Edge> edges,
         int nextCandidate, int remaining, System.Random random,
@@ -286,6 +322,10 @@ public static class PuzzleGenerator
                     exits.Add(new ExitOption(room, direction));
         Shuffle(exits, random);
 
+        // Size changes transform the drawing only. They never add graph vertices.
+        RoomDefinition[] rooms = CreateRooms(cells, config);
+        if (rooms == null) return false;
+
         foreach (ExitOption exit in exits)
         {
             if (CountDeadEnds(degree, exit.Room) != config.DeadEndCount)
@@ -293,33 +333,97 @@ public static class PuzzleGenerator
 
             // Only after choosing the logical graph do we lay out rectangles
             // and locate doors on their shared walls.
-            RoomDefinition[] rooms = CreateRooms(cells);
             DoorDefinition[] doors = CreateDoors(edges, cells, rooms, exit);
             LevelDefinition candidate = new LevelDefinition(name, rooms, doors,
-                5f, ThemeColor(config.VisualTheme));
-            bool[] winningStarts = PuzzleSolver.FindWinningStarts(candidate);
-            bool hasPreferredStart = false;
-            int bestWrongSurvival = 0;
-            for (int room = 0; room < cells.Count; room++)
-            {
-                if (winningStarts[room])
-                {
-                    if (degree[room] >= config.PreferredStartMinDegree &&
-                        degree[room] > 1)
-                        hasPreferredStart = true;
-                }
-                else if (config.MinWrongStartSurvivalMoves > 0)
-                    bestWrongSurvival = Math.Max(bestWrongSurvival,
-                        PuzzleSolver.LongestPathBeforeDeadEnd(candidate, room));
-            }
-            if (!hasPreferredStart ||
-                bestWrongSurvival < config.MinWrongStartSurvivalMoves)
-                continue;
-
-            puzzle = candidate;
-            return true;
+                5f, ThemeColor(config.VisualTheme), config.Atmosphere);
+            if (TryFinishDirections(config, candidate, degree, out puzzle)) return true;
         }
 
+        return false;
+    }
+
+    private static bool HasStartQuality(PuzzleConfig config, LevelDefinition candidate,
+        int[] degree, out bool[] winningStarts, bool requireMeaningfulArrows = false)
+    {
+        winningStarts = PuzzleSolver.FindWinningStarts(candidate);
+        if (requireMeaningfulArrows &&
+            !PuzzleSolver.HasMeaningfulOneWayDoors(candidate, winningStarts))
+            return false;
+        bool hasPreferredStart = false;
+        int bestWrongSurvival = 0;
+        for (int room = 0; room < candidate.Rooms.Length; room++)
+        {
+            if (winningStarts[room])
+            {
+                if (degree[room] >= config.PreferredStartMinDegree && degree[room] > 1)
+                    hasPreferredStart = true;
+            }
+            else if (config.MinWrongStartSurvivalMoves > 0 &&
+                bestWrongSurvival < config.MinWrongStartSurvivalMoves)
+                bestWrongSurvival = Math.Max(bestWrongSurvival,
+                    PuzzleSolver.LongestPathBeforeDeadEnd(candidate, room));
+        }
+        return hasPreferredStart && bestWrongSurvival >= config.MinWrongStartSurvivalMoves;
+    }
+
+    private static bool TryFinishDirections(PuzzleConfig config, LevelDefinition undirected,
+        int[] degree, out LevelDefinition puzzle)
+    {
+        puzzle = null;
+        if (!HasStartQuality(config, undirected, degree, out _)) return false;
+        if (config.OneWayDoorCount == 0)
+        {
+            // Level 1 keeps its original graph, seed stream, and validation.
+            puzzle = undirected;
+            return true;
+        }
+        if (!PuzzleSolver.TryFindWinningRoute(undirected, out int startRoom, out int[] route))
+            return false;
+
+        int[] fromRoom = new int[undirected.Doors.Length];
+        List<int> interiorDoors = new List<int>();
+        int current = startRoom;
+        foreach (int index in route)
+        {
+            DoorDefinition door = undirected.Doors[index];
+            fromRoom[index] = current;
+            if (!door.IsExit) interiorDoors.Add(index);
+            current = door.OtherRoom(current);
+        }
+
+        // At most C(29,2)=406 variants with the supported 0..2 arrows and
+        // 30-door limit. All loops are finite; EXIT is never a candidate.
+        List<int[]> selections = new List<int[]>();
+        for (int a = 0; a < interiorDoors.Count; a++)
+        {
+            if (config.OneWayDoorCount == 1)
+                selections.Add(new[] { interiorDoors[a] });
+            else
+                for (int b = a + 1; b < interiorDoors.Count; b++)
+                    selections.Add(new[] { interiorDoors[a], interiorDoors[b] });
+        }
+        System.Random directionRandom = new System.Random(unchecked(config.Seed * 104729 +
+            startRoom * 7919 + undirected.Doors.Length * 271));
+        Shuffle(selections, directionRandom);
+        foreach (int[] selection in selections)
+        {
+            DoorDefinition[] doors = (DoorDefinition[])undirected.Doors.Clone();
+            foreach (int index in selection)
+            {
+                DoorDefinition door = doors[index];
+                DoorDirection direction = fromRoom[index] == door.RoomA
+                    ? DoorDirection.AToB : DoorDirection.BToA;
+                doors[index] = door.WithDirection(direction);
+            }
+            LevelDefinition directed = new LevelDefinition(undirected.Name, undirected.Rooms,
+                doors, undirected.CameraSize, undirected.FloorColor, config.Atmosphere);
+            // The witness still works, but perform the actual directed solver
+            // and quality checks, including survival with directed reachability.
+            if (!HasStartQuality(config, directed, degree, out _, true))
+                continue;
+            puzzle = directed;
+            return true;
+        }
         return false;
     }
 
@@ -349,7 +453,7 @@ public static class PuzzleGenerator
         foreach (int roomDegree in degree)
             if (roomDegree >= 3) branchingRooms++;
         if (branchingRooms < config.MinBranchingRooms) return false;
-        if (config.Branching == 0) return true;
+        if (config.Branching == 0 && config.MinDistinctBranchingRooms == 0) return true;
 
         bool[,] neighbours = new bool[config.RoomCount, config.RoomCount];
         foreach (Edge edge in edges)
@@ -358,17 +462,18 @@ public static class PuzzleGenerator
             neighbours[edge.B, edge.A] = true;
         }
 
+        int distinctBranchingRooms = 0;
+        bool hasBranching = config.Branching == 0;
         for (int room = 0; room < degree.Length; room++)
         {
-            if (config.Branching == 1 && degree[room] >= 3) return true;
-            if (config.Branching != 2) continue;
-
             int distinct = 0;
             for (int other = 0; other < degree.Length; other++)
                 if (neighbours[room, other]) distinct++;
-            if (distinct >= 3) return true;
+            if (distinct >= 3) distinctBranchingRooms++;
+            if (config.Branching == 1 && degree[room] >= 3) hasBranching = true;
+            if (config.Branching == 2 && distinct >= 3) hasBranching = true;
         }
-        return false;
+        return hasBranching && distinctBranchingRooms >= config.MinDistinctBranchingRooms;
     }
 
     private static int CountDeadEnds(int[] degree, int exitRoom)
@@ -379,26 +484,103 @@ public static class PuzzleGenerator
         return count;
     }
 
-    private static RoomDefinition[] CreateRooms(List<Vector2Int> cells)
+    private static void GetCellBounds(List<Vector2Int> cells,
+        out Vector2Int min, out Vector2Int max)
     {
-        int minX = GridSize, maxX = 0, minY = GridSize, maxY = 0;
+        min = new Vector2Int(GridSize, GridSize);
+        max = Vector2Int.zero;
         foreach (Vector2Int cell in cells)
         {
-            minX = Mathf.Min(minX, cell.x);
-            maxX = Mathf.Max(maxX, cell.x);
-            minY = Mathf.Min(minY, cell.y);
-            maxY = Mathf.Max(maxY, cell.y);
+            min = new Vector2Int(Mathf.Min(min.x, cell.x), Mathf.Min(min.y, cell.y));
+            max = new Vector2Int(Mathf.Max(max.x, cell.x), Mathf.Max(max.y, cell.y));
         }
+    }
+
+    private static RoomDefinition[] CreateRooms(List<Vector2Int> cells, PuzzleConfig config)
+    {
+        // Level 1 uses precisely the original band selection and random stream.
+        if (config.MaxLayoutAspectRatio <= 0f)
+            return CreateRoomBands(cells, config, config.RoomLayout, -1);
+
+        PuzzleRoomLayout alternate = config.RoomLayout == PuzzleRoomLayout.WideRooms
+            ? PuzzleRoomLayout.TallRooms : PuzzleRoomLayout.WideRooms;
+        List<int> order = new List<int> { 0, 1, 2 };
+        Shuffle(order, new System.Random(unchecked(config.Seed * 31337 + (int)config.RoomLayout * 271)));
+        foreach (PuzzleRoomLayout layout in new[] { config.RoomLayout, alternate })
+        foreach (int band in order)
+        {
+            RoomDefinition[] rooms = CreateRoomBands(cells, config, layout, band);
+            if (rooms != null && HasRoomAspect(rooms, config.MaxLayoutAspectRatio)) return rooms;
+        }
+        return null; // Try another graph placement; attempts remain bounded.
+    }
+
+    private static bool HasRoomAspect(RoomDefinition[] rooms, float maximum)
+    {
+        Vector2 min = rooms[0].Center - rooms[0].Size * 0.5f;
+        Vector2 max = rooms[0].Center + rooms[0].Size * 0.5f;
+        foreach (RoomDefinition room in rooms)
+        {
+            min = Vector2.Min(min, room.Center - room.Size * 0.5f);
+            max = Vector2.Max(max, room.Center + room.Size * 0.5f);
+        }
+        Vector2 size = max - min;
+        return Mathf.Max(size.x / size.y, size.y / size.x) <= maximum + 0.001f;
+    }
+
+    private static RoomDefinition[] CreateRoomBands(List<Vector2Int> cells, PuzzleConfig config,
+        PuzzleRoomLayout layout, int preferredBand)
+    {
+        int[] widths = { 1, 1, 1 };
+        int[] heights = { 1, 1, 1 };
+        if (layout != PuzzleRoomLayout.Compact)
+        {
+            bool wide = layout == PuzzleRoomLayout.WideRooms;
+            List<int> bands = new List<int>();
+            for (int band = 0; band < GridSize; band++)
+            {
+                int occupants = 0;
+                foreach (Vector2Int cell in cells)
+                    if ((wide ? cell.x : cell.y) == band) occupants++;
+                if (occupants >= Math.Max(1, config.MinElongatedRooms)) bands.Add(band);
+            }
+            if (bands.Count == 0) return null;
+            // A separate seeded stream keeps visual choices out of graph search.
+            System.Random layoutRandom = new System.Random(unchecked(config.Seed * 31337 +
+                (int)config.RoomLayout * 271));
+            int selected = preferredBand >= 0 ? preferredBand : bands[layoutRandom.Next(bands.Count)];
+            if (!bands.Contains(selected)) return null;
+            if (wide) widths[selected] = config.LongRoomSpan;
+            else heights[selected] = config.LongRoomSpan;
+        }
+
+        // Weighted grid bands guarantee shared walls, no overlaps, and only
+        // 1x1 / 2x1 / 1x2 / 3x1 / 1x3 rooms (never an accidental 2x2 room).
+        float[] xBounds = BandBounds(widths);
+        float[] yBounds = BandBounds(heights);
+        GetCellBounds(cells, out Vector2Int min, out Vector2Int max);
+        Vector2 origin = new Vector2((xBounds[min.x] + xBounds[max.x + 1]) * 0.5f,
+            (yBounds[min.y] + yBounds[max.y + 1]) * 0.5f);
 
         RoomDefinition[] rooms = new RoomDefinition[cells.Count];
         for (int i = 0; i < cells.Count; i++)
         {
-            Vector2 center = new Vector2(
-                (cells[i].x - (minX + maxX) * 0.5f) * RoomSize,
-                (cells[i].y - (minY + maxY) * 0.5f) * RoomSize);
-            rooms[i] = new RoomDefinition(center, Vector2.one * RoomSize);
+            Vector2Int cell = cells[i];
+            Vector2 center = new Vector2((xBounds[cell.x] + xBounds[cell.x + 1]) * 0.5f,
+                (yBounds[cell.y] + yBounds[cell.y + 1]) * 0.5f) - origin;
+            Vector2Int footprint = new Vector2Int(widths[cell.x], heights[cell.y]);
+            rooms[i] = new RoomDefinition(center,
+                new Vector2(footprint.x, footprint.y) * RoomSize, footprint);
         }
         return rooms;
+    }
+
+    private static float[] BandBounds(int[] lengths)
+    {
+        float[] result = new float[lengths.Length + 1];
+        for (int i = 0; i < lengths.Length; i++)
+            result[i + 1] = result[i] + lengths[i] * RoomSize;
+        return result;
     }
 
     private static DoorDefinition[] CreateDoors(List<Edge> edges,
@@ -417,13 +599,24 @@ public static class PuzzleGenerator
             float offset = totals[edge.A, edge.B] == 2
                 ? (ordinal == 0 ? -PairedDoorOffset : PairedDoorOffset) : 0f;
             bool vertical = cells[edge.A].x != cells[edge.B].x;
-            Vector2 position = (rooms[edge.A].Center + rooms[edge.B].Center) * 0.5f;
+            RoomDefinition a = rooms[edge.A];
+            RoomDefinition b = rooms[edge.B];
+            // Midpoint between unequal room centres is NOT the shared wall.
+            Vector2 position = vertical
+                ? new Vector2(a.Center.x + Math.Sign(cells[edge.B].x - cells[edge.A].x) * a.Size.x * 0.5f,
+                    (Mathf.Max(a.Center.y - a.Size.y * 0.5f, b.Center.y - b.Size.y * 0.5f) +
+                     Mathf.Min(a.Center.y + a.Size.y * 0.5f, b.Center.y + b.Size.y * 0.5f)) * 0.5f)
+                : new Vector2(
+                    (Mathf.Max(a.Center.x - a.Size.x * 0.5f, b.Center.x - b.Size.x * 0.5f) +
+                     Mathf.Min(a.Center.x + a.Size.x * 0.5f, b.Center.x + b.Size.x * 0.5f)) * 0.5f,
+                    a.Center.y + Math.Sign(cells[edge.B].y - cells[edge.A].y) * a.Size.y * 0.5f);
             position += vertical ? Vector2.up * offset : Vector2.right * offset;
             doors[i] = new DoorDefinition(edge.A, edge.B, position, vertical);
         }
 
         Vector2 direction = new Vector2(exit.Direction.x, exit.Direction.y);
-        Vector2 exitPosition = rooms[exit.Room].Center + direction * (RoomSize * 0.5f);
+        Vector2 exitPosition = rooms[exit.Room].Center +
+            Vector2.Scale(direction, rooms[exit.Room].Size) * 0.5f;
         doors[doors.Length - 1] = new DoorDefinition(exit.Room, -1, exitPosition,
             exit.Direction.x != 0, true);
         return doors;
