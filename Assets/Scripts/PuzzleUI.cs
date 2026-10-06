@@ -8,17 +8,17 @@ using UnityEngine.EventSystems;
 public sealed class PuzzleUI : MonoBehaviour
 {
     private enum ButtonStyle { Primary, Secondary, Retry }
-    private enum Icon { Play, Restart, Next, Home, Check, Close, Door }
+    private enum Icon { Play, Restart, Next, Home, Check, Close }
 
     private readonly List<RaycastResult> pointerHits = new List<RaycastResult>();
     private readonly List<RectTransform> safeAreas = new List<RectTransform>();
     private readonly List<Text> contextLabels = new List<Text>();
+    private readonly List<Graphic> gameplayButtonInk = new List<Graphic>();
     private Text levelText;
     private Text puzzleText;
     private Text doorsText;
     private Text levelCompleteText;
     private Text chooseStartText;
-    private Image doorCounter;
     private Image headerRule;
     private Canvas uiCanvas;
     private GameObject chooseStartHint;
@@ -83,24 +83,24 @@ public sealed class PuzzleUI : MonoBehaviour
         puzzleSelection.Build(font, progress, onSelectPuzzle, onHome);
 
         Transform correct = MakeResultCard(puzzleCompletePanel, 592,
-            PuzzleVisualStyle.Success, PuzzleVisualStyle.SuccessSoft, Icon.Check);
+            PuzzleVisualStyle.Success, Icon.Check);
         MakeCenteredText(correct, "Title", "CORRECT!", 72, 18, PuzzleVisualStyle.Text);
         MakeCenteredButton(correct, "NEXT", -168, onNextPuzzle, ButtonStyle.Primary, Icon.Next);
 
         Transform lose = MakeResultCard(losePanel, 640,
-            PuzzleVisualStyle.Danger, PuzzleVisualStyle.DangerSoft, Icon.Close);
+            PuzzleVisualStyle.Danger, Icon.Close);
         MakeCenteredText(lose, "Title", "YOU LOSE", 72, 18, PuzzleVisualStyle.Text);
         MakeCenteredText(lose, "Message", "Path blocked", 34, -66, PuzzleVisualStyle.MutedText);
         MakeCenteredButton(lose, "RETRY", -204, onRestart, ButtonStyle.Retry, Icon.Restart);
 
         Transform complete = MakeResultCard(levelCompletePanel, 592,
-            PuzzleVisualStyle.Success, PuzzleVisualStyle.SuccessSoft, Icon.Check);
+            PuzzleVisualStyle.Success, Icon.Check);
         levelCompleteText = MakeCenteredText(complete, "Title", "LEVEL 1 COMPLETE",
             60, 18, PuzzleVisualStyle.Text);
         MakeCenteredButton(complete, "NEXT LEVEL", -168, onNextLevel, ButtonStyle.Primary, Icon.Next);
 
         Transform gameComplete = MakeResultCard(gameCompletePanel, 720,
-            PuzzleVisualStyle.Success, PuzzleVisualStyle.SuccessSoft, Icon.Check);
+            PuzzleVisualStyle.Success, Icon.Check);
         MakeCenteredText(gameComplete, "Title", "GAME COMPLETE", 64, 76, PuzzleVisualStyle.Text);
         MakeCenteredButton(gameComplete, "PLAY AGAIN", -84, onPlay, ButtonStyle.Primary, Icon.Play);
         MakeCenteredButton(gameComplete, "HOME", -220, onHome, ButtonStyle.Secondary, Icon.Home);
@@ -126,62 +126,59 @@ public sealed class PuzzleUI : MonoBehaviour
     private void BuildGameplayPanel(UnityAction onRestart, UnityAction onHome)
     {
         Transform root = MakeSafeContent(gameplayPanel, "GameplayHUD");
-        levelText = MakeText(root, "Level", 30, PuzzleVisualStyle.MutedText);
+        levelText = MakeText(root, "Level", 28, PuzzleVisualStyle.MutedText);
         levelText.alignment = TextAnchor.MiddleLeft;
         Place(levelText.rectTransform, new Vector2(0.5f, 1), new Vector2(-220, -60),
             new Vector2(440, 54));
 
-        puzzleText = MakeText(root, "Puzzle", 46, PuzzleVisualStyle.Text);
+        puzzleText = MakeText(root, "Puzzle", 50, PuzzleVisualStyle.Text);
+        puzzleText.fontStyle = FontStyle.Bold;
         puzzleText.alignment = TextAnchor.MiddleLeft;
         Place(puzzleText.rectTransform, new Vector2(0.5f, 1), new Vector2(-190, -118),
             new Vector2(500, 72));
 
-        GameObject counter = MakeSurface(root, "Door Counter", new Vector2(0.5f, 1),
-            new Vector2(316, -104), new Vector2(248, 86), PuzzleVisualStyle.Surface, false);
-        doorCounter = counter.GetComponent<Image>();
-        doorsText = MakeText(counter.transform, "Doors", 32, PuzzleVisualStyle.Text);
-        Stretch(doorsText.rectTransform);
+        doorsText = MakeText(root, "Doors", 30, PuzzleVisualStyle.MutedText);
+        doorsText.alignment = TextAnchor.MiddleRight;
+        Place(doorsText.rectTransform, new Vector2(0.5f, 1), new Vector2(316, -118),
+            new Vector2(248, 72));
 
         headerRule = MakeImage(root, "Header Rule", new Vector2(0.5f, 1), new Vector2(0, -180),
             new Vector2(880, 2), PuzzleVisualStyle.Border);
 
-        chooseStartHint = MakeSurface(root, "Choose Start Room", new Vector2(0.5f, 1),
-            new Vector2(0, -246), new Vector2(620, 76), PuzzleVisualStyle.PrimarySoft, false);
+        chooseStartHint = new GameObject("Choose Start Room", typeof(RectTransform));
+        chooseStartHint.transform.SetParent(root, false);
+        Place(chooseStartHint.GetComponent<RectTransform>(), new Vector2(0.5f, 1),
+            new Vector2(0, -246), new Vector2(620, 76));
         Text hint = MakeText(chooseStartHint.transform, "Label", 30, PuzzleVisualStyle.Primary);
         chooseStartText = hint;
-        hint.fontStyle = FontStyle.Bold;
         hint.text = "CHOOSE START ROOM";
-        float hintWidth = hint.preferredWidth;
-        Place(hint.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(24, 0),
-            new Vector2(hintWidth + 8, 76));
-        MakeIcon(chooseStartHint.transform, Icon.Door,
-            new Vector2(-(hintWidth + 20) * 0.5f, 0), 28, PuzzleVisualStyle.Primary);
+        Stretch(hint.rectTransform);
 
         MakeButton(root, "RESTART", new Vector2(0.5f, 0), new Vector2(-220, 92),
-            new Vector2(360, 100), onRestart, ButtonStyle.Secondary, Icon.Restart);
+            new Vector2(360, 108), onRestart, ButtonStyle.Secondary, Icon.Restart, true);
         MakeButton(root, "HOME", new Vector2(0.5f, 0), new Vector2(220, 92),
-            new Vector2(360, 100), onHome, ButtonStyle.Secondary, Icon.Home);
+            new Vector2(360, 108), onHome, ButtonStyle.Secondary, Icon.Home, true);
     }
 
     private void BuildHomeFooter(GameObject panel, UnityAction onHome)
     {
         Transform root = MakeSafeContent(panel, "Home Footer");
         MakeButton(root, "HOME", new Vector2(0.5f, 0), new Vector2(0, 92),
-            new Vector2(360, 100), onHome, ButtonStyle.Secondary, Icon.Home);
+            new Vector2(360, 108), onHome, ButtonStyle.Secondary, Icon.Home);
     }
 
     private Transform MakeResultCard(GameObject panel, float height, Color accent,
-        Color softAccent, Icon icon)
+        Icon icon)
     {
         Transform root = MakeSafeContent(panel, "Content");
-        GameObject card = MakeSurface(root, "Card", new Vector2(0.5f, 0.5f),
-            Vector2.zero, new Vector2(864, height), PuzzleVisualStyle.Surface, true, 0.55f);
+        GameObject card = MakeImage(root, "Result Surface", new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(864, height), PuzzleVisualStyle.Surface,
+            PuzzleVisualStyle.RoundedSprite, PuzzleVisualStyle.ButtonCornerScale).gameObject;
         Text context = MakeCenteredText(card.transform, "Context", "", 28,
             height * 0.5f - 54, PuzzleVisualStyle.MutedText);
         contextLabels.Add(context);
         Image badge = MakeImage(card.transform, "Status Badge", new Vector2(0.5f, 0.5f),
-            new Vector2(0, height * 0.5f - 158), new Vector2(80, 80), softAccent,
-            PuzzleVisualStyle.CircleSprite);
+            new Vector2(0, height * 0.5f - 158), new Vector2(80, 80), Color.clear);
         MakeIcon(badge.transform, icon, Vector2.zero, 40, accent);
         return card.transform;
     }
@@ -201,12 +198,10 @@ public sealed class PuzzleUI : MonoBehaviour
     {
         levelText.color = palette.MutedText;
         puzzleText.color = palette.HeaderText;
-        doorsText.color = palette.HeaderText;
-        doorCounter.color = palette.HudSurface;
+        doorsText.color = palette.MutedText;
         headerRule.color = palette.HeaderRule;
         chooseStartText.color = palette.HintText;
-        foreach (Image image in chooseStartHint.GetComponentsInChildren<Image>(true))
-            image.color = image.gameObject == chooseStartHint ? palette.HintSurface : palette.HintText;
+        foreach (Graphic ink in gameplayButtonInk) ink.color = palette.MutedText;
     }
 
     public float PixelScale => uiCanvas.scaleFactor;
@@ -323,17 +318,6 @@ public sealed class PuzzleUI : MonoBehaviour
         return content.transform;
     }
 
-    private GameObject MakeSurface(Transform parent, string name, Vector2 anchor,
-        Vector2 position, Vector2 size, Color color, bool shadow, float cornerScale = 0.75f)
-    {
-        if (shadow)
-            MakeImage(parent, name + " Shadow", anchor, position + new Vector2(0, -10),
-                size + new Vector2(4, 4), PuzzleVisualStyle.Shadow,
-                PuzzleVisualStyle.RoundedSprite, cornerScale);
-        return MakeImage(parent, name, anchor, position, size, color,
-            PuzzleVisualStyle.RoundedSprite, cornerScale).gameObject;
-    }
-
     private Image MakeImage(Transform parent, string name, Vector2 anchor,
         Vector2 position, Vector2 size, Color color, Sprite sprite = null,
         float cornerScale = 0.75f)
@@ -387,43 +371,44 @@ public sealed class PuzzleUI : MonoBehaviour
     }
 
     private void MakeButton(Transform parent, string caption, Vector2 anchor,
-        Vector2 position, Vector2 size, UnityAction onClick, ButtonStyle style, Icon icon)
+        Vector2 position, Vector2 size, UnityAction onClick, ButtonStyle style, Icon icon,
+        bool gameplay = false)
     {
-        Color fill = style == ButtonStyle.Retry ? PuzzleVisualStyle.Danger
-            : style == ButtonStyle.Secondary ? PuzzleVisualStyle.Secondary : PuzzleVisualStyle.Primary;
-        Color ink = style == ButtonStyle.Secondary ? PuzzleVisualStyle.Primary : Color.white;
+        Color fill = style == ButtonStyle.Secondary ? PuzzleVisualStyle.Secondary : PuzzleVisualStyle.Primary;
+        Color ink = style == ButtonStyle.Secondary ? PuzzleVisualStyle.Text : PuzzleVisualStyle.Surface;
         Image image = MakeImage(parent, caption, anchor, position, size,
-            style == ButtonStyle.Secondary ? PuzzleVisualStyle.Border : fill,
-            PuzzleVisualStyle.RoundedSprite);
+            gameplay ? Color.clear : fill,
+            PuzzleVisualStyle.RoundedSprite, PuzzleVisualStyle.ButtonCornerScale);
         image.raycastTarget = true;
-        Image target = image;
-        if (style == ButtonStyle.Secondary)
-        {
-            target = MakeImage(image.transform, "Fill", new Vector2(0.5f, 0.5f),
-                Vector2.zero, size - Vector2.one * 3, fill, PuzzleVisualStyle.RoundedSprite);
-            Stretch(target.rectTransform, 1.5f);
-        }
         Button button = image.gameObject.AddComponent<Button>();
-        button.targetGraphic = target;
+        button.targetGraphic = image;
         button.transition = Selectable.Transition.ColorTint;
         ColorBlock colors = button.colors;
         colors.normalColor = Color.white;
-        colors.highlightedColor = new Color(0.95f, 0.98f, 0.98f);
+        colors.highlightedColor = PuzzleVisualStyle.ButtonHighlight;
         colors.selectedColor = colors.highlightedColor;
-        colors.pressedColor = new Color(0.82f, 0.90f, 0.91f);
-        colors.disabledColor = new Color(0.70f, 0.76f, 0.77f);
+        colors.pressedColor = PuzzleVisualStyle.ButtonPressed;
+        colors.disabledColor = PuzzleVisualStyle.ButtonDisabled;
         colors.fadeDuration = 0.08f;
         button.colors = colors;
         button.onClick.AddListener(onClick);
 
         int fontSize = size.x < 400 ? 30 : 34;
         Text label = MakeText(image.transform, "Label", fontSize, ink);
-        label.fontStyle = FontStyle.Bold;
+        label.fontStyle = style == ButtonStyle.Secondary ? FontStyle.Normal : FontStyle.Bold;
         label.text = caption;
         float captionWidth = Mathf.Min(label.preferredWidth, size.x - 130);
         Place(label.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(25, 0),
             new Vector2(captionWidth + 8, size.y));
         MakeIcon(image.transform, icon, new Vector2(-(captionWidth + 20) * 0.5f, 0), 30, ink);
+        if (gameplay)
+        {
+            // Transparent button retains the full touch region; ink changes with the level.
+            // Tint the label itself so pressed feedback also works without a card fill.
+            button.targetGraphic = label;
+            foreach (Graphic graphic in image.GetComponentsInChildren<Graphic>())
+                if (graphic != image) gameplayButtonInk.Add(graphic);
+        }
     }
 
     private void MakeIcon(Transform parent, Icon icon, Vector2 position, float size, Color color)
@@ -468,15 +453,6 @@ public sealed class PuzzleUI : MonoBehaviour
                 IconLine(root, new Vector2(-4, -16), new Vector2(-4, -5), unit, color);
                 IconLine(root, new Vector2(-4, -5), new Vector2(4, -5), unit, color);
                 IconLine(root, new Vector2(4, -5), new Vector2(4, -16), unit, color);
-                break;
-            case Icon.Door:
-                IconLine(root, new Vector2(-14, -18), new Vector2(-14, 18), unit, color);
-                IconLine(root, new Vector2(-14, 18), new Vector2(12, 18), unit, color);
-                IconLine(root, new Vector2(12, 18), new Vector2(12, -18), unit, color);
-                IconLine(root, new Vector2(-10, -17), new Vector2(8, -11), unit, color);
-                IconLine(root, new Vector2(8, -11), new Vector2(8, 15), unit, color);
-                MakeImage(root, "Handle", new Vector2(0.5f, 0.5f), new Vector2(2, 0) * unit,
-                    Vector2.one * (4 * unit), color, PuzzleVisualStyle.CircleSprite);
                 break;
         }
     }

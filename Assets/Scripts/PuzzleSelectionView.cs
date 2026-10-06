@@ -50,7 +50,7 @@ public sealed class PuzzleSelectionView : MonoBehaviour
             new Vector2(580, 108), onHome);
         back.GetComponent<Image>().color = PuzzleVisualStyle.Primary;
         Label(back.transform, "Label", "BACK", 34, Vector2.zero,
-            new Vector2(540, 90), Color.white);
+            new Vector2(540, 90), PuzzleVisualStyle.Surface);
         Refresh();
         Fit();
     }
@@ -86,14 +86,15 @@ public sealed class PuzzleSelectionView : MonoBehaviour
         Image image = RectAt(parent, name, position, size).gameObject.AddComponent<Image>();
         image.sprite = PuzzleVisualStyle.RoundedSprite;
         image.type = Image.Type.Sliced;
-        image.pixelsPerUnitMultiplier = 0.55f;
+        image.pixelsPerUnitMultiplier = PuzzleVisualStyle.ButtonCornerScale;
         image.color = PuzzleVisualStyle.Surface;
         Button button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
         ColorBlock colors = button.colors;
-        colors.highlightedColor = new Color(0.95f, 0.98f, 0.98f);
-        colors.pressedColor = new Color(0.82f, 0.90f, 0.91f);
-        colors.disabledColor = new Color(0.72f, 0.78f, 0.80f);
+        colors.highlightedColor = PuzzleVisualStyle.ButtonHighlight;
+        colors.selectedColor = colors.highlightedColor;
+        colors.pressedColor = PuzzleVisualStyle.ButtonPressed;
+        colors.disabledColor = PuzzleVisualStyle.ButtonDisabled;
         colors.fadeDuration = 0.08f;
         button.colors = colors;
         button.onClick.AddListener(onClick);
@@ -106,7 +107,7 @@ public sealed class PuzzleSelectionView : MonoBehaviour
         Text text = RectAt(parent, name, position, bounds).gameObject.AddComponent<Text>();
         text.font = font;
         text.fontSize = size;
-        text.fontStyle = FontStyle.Bold;
+        text.fontStyle = name == "Hint" || name == "Status" ? FontStyle.Normal : FontStyle.Bold;
         text.alignment = TextAnchor.MiddleCenter;
         text.text = caption;
         text.color = color;

@@ -3,29 +3,35 @@ using UnityEngine;
 // Shared presentation only: no puzzle rules or generation settings live here.
 public static class PuzzleVisualStyle
 {
-    public static readonly Color Background = Rgb(238, 243, 243);
-    public static readonly Color Surface = Rgb(252, 253, 251);
-    public static readonly Color Text = Rgb(38, 60, 69);
-    public static readonly Color MutedText = Rgb(104, 124, 132);
-    public static readonly Color Border = Rgb(213, 223, 223);
-    public static readonly Color Primary = Rgb(53, 95, 109);
-    public static readonly Color PrimarySoft = Rgb(225, 236, 237);
-    public static readonly Color Secondary = Rgb(241, 246, 245);
-    public static readonly Color Success = Rgb(77, 137, 124);
-    public static readonly Color SuccessSoft = Rgb(228, 241, 235);
-    public static readonly Color Danger = Rgb(163, 97, 89);
-    public static readonly Color DangerSoft = Rgb(247, 233, 229);
-    public static readonly Color Wall = Rgb(96, 119, 124);
-    public static readonly Color DoorOpen = Rgb(214, 154, 80);
-    public static readonly Color DoorClosed = Rgb(160, 175, 178);
-    public static readonly Color OneWayOpen = Rgb(154, 143, 186);
-    public static readonly Color OneWayClosed = Rgb(127, 130, 151);
-    public static readonly Color OneWayArrow = Rgb(244, 240, 250);
-    public static readonly Color ExitOpen = Rgb(85, 139, 112);
-    public static readonly Color ExitClosed = Rgb(139, 168, 151);
-    public static readonly Color Player = Rgb(72, 123, 178);
-    public static readonly Color Shadow = new Color(0.12f, 0.23f, 0.27f, 0.07f);
-    public static readonly Color Overlay = new Color(0.12f, 0.20f, 0.24f, 0.26f);
+    public static readonly Color Background = Rgb(238, 231, 220);
+    public static readonly Color Surface = Rgb(243, 238, 230);
+    public static readonly Color Text = Rgb(63, 58, 55);
+    public static readonly Color MutedText = Rgb(110, 103, 98);
+    public static readonly Color Border = Rgb(207, 196, 182);
+    public static readonly Color Primary = Text;
+    public static readonly Color PrimarySoft = Rgb(229, 221, 209);
+    public static readonly Color Secondary = Rgb(231, 223, 212);
+    public static readonly Color Success = Rgb(58, 116, 107);
+    public static readonly Color SuccessSoft = Rgb(223, 234, 227);
+    public static readonly Color Danger = Rgb(153, 89, 77);
+    public static readonly Color DangerSoft = Rgb(239, 225, 216);
+    public static readonly Color Wall = Rgb(62, 59, 57);
+    public static readonly Color DoorOpen = Rgb(185, 138, 85);
+    public static readonly Color DoorClosed = Rgb(133, 128, 120);
+    public static readonly Color OneWayOpen = Rgb(140, 124, 161);
+    public static readonly Color OneWayClosed = Rgb(110, 106, 121);
+    public static readonly Color OneWayArrow = Rgb(238, 231, 245);
+    public static readonly Color ExitOpen = Rgb(78, 154, 145);
+    public static readonly Color ExitClosed = Rgb(108, 135, 128);
+    public static readonly Color Player = Rgb(90, 115, 168);
+    public static readonly Color Shadow = new Color(0.20f, 0.18f, 0.16f, 0.035f);
+    public static readonly Color Overlay = new Color(0.16f, 0.15f, 0.14f, 0.48f);
+
+    // Shared across menu, settings, selection and result buttons.
+    public const float ButtonCornerScale = 1.5f;
+    public static readonly Color ButtonHighlight = Rgb(240, 236, 229);
+    public static readonly Color ButtonPressed = Rgb(209, 202, 192);
+    public static readonly Color ButtonDisabled = Rgb(181, 175, 167);
 
     private static Sprite roundedSprite;
     private static Sprite circleSprite;

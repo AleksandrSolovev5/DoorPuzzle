@@ -5,7 +5,7 @@ public sealed class DoorView : MonoBehaviour
 {
     // Door leaves share one size. Level 2 configures its touch region separately.
     public const float Width = 0.6f;
-    private const float Thickness = 0.16f;
+    private const float Thickness = 0.09f;
     private const float TapSize = 0.72f;
 
     public int Index { get; private set; }
@@ -51,8 +51,8 @@ public sealed class DoorView : MonoBehaviour
         drawing.sprite = sprite;
         drawing.sortingOrder = 4;
 
-        AddDetail("Hinge Pin", Vector2.zero, 0.065f, PuzzleVisualStyle.Wall);
-        AddDetail("Handle", new Vector2(Width * 0.8f, 0), 0.05f,
+        AddDetail("Hinge Pin", Vector2.zero, 0.045f, PuzzleVisualStyle.Wall);
+        AddDetail("Handle", new Vector2(Width * 0.8f, 0), 0.035f,
             PuzzleVisualStyle.Surface);
 
         openColor = door.IsExit ? PuzzleVisualStyle.ExitOpen :

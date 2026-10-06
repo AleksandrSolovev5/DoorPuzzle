@@ -642,22 +642,11 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void DrawStartRoomHint(RoomDefinition room)
     {
-        // Quiet corner marks show that every room can be selected. They have
-        // no colliders and disappear after the player chooses a room.
-        Color color = level.Palette.SelectionMarker;
-        for (int x = -1; x <= 1; x += 2)
-        for (int y = -1; y <= 1; y += 2)
-        {
-            Vector2 corner = room.Center + new Vector2(
-                x * (room.Size.x * 0.5f - 0.17f),
-                y * (room.Size.y * 0.5f - 0.17f));
-            Shape("Selection corner", corner - new Vector2(x * 0.07f, 0),
-                new Vector2(0.14f, 0.022f), color, 1)
-                .transform.SetParent(startRoomHints.transform, true);
-            Shape("Selection corner", corner - new Vector2(0, y * 0.07f),
-                new Vector2(0.022f, 0.14f), color, 1)
-                .transform.SetParent(startRoomHints.transform, true);
-        }
+        // One quiet mark per selectable room, without decorative corner frames.
+        // This is presentation only; every room remains selectable.
+        Shape("Start room marker", room.Center, Vector2.one * 0.08f,
+            level.Palette.SelectionMarker, 1, PuzzleVisualStyle.CircleSprite)
+            .transform.SetParent(startRoomHints.transform, true);
     }
 
     private void DrawWall(int roomIndex, bool vertical, float coordinate,
@@ -697,8 +686,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             ? new Vector2(coordinate, (start + end) * 0.5f)
             : new Vector2((start + end) * 0.5f, coordinate);
         Vector2 size = vertical
-            ? new Vector2(0.07f, end - start + 0.01f)
-            : new Vector2(end - start + 0.01f, 0.07f);
+            ? new Vector2(0.085f, end - start + 0.01f)
+            : new Vector2(end - start + 0.01f, 0.085f);
         Shape("Wall", center, size, color, 2);
     }
 
@@ -732,7 +721,7 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         renderer.sortingOrder = 10;
         GameObject rim = new GameObject("Player Rim");
         rim.transform.SetParent(body.transform, false);
-        rim.transform.localScale = Vector3.one * 1.14f;
+        rim.transform.localScale = Vector3.one * 1.08f;
         SpriteRenderer rimRenderer = rim.AddComponent<SpriteRenderer>();
         rimRenderer.sprite = circleSprite;
         rimRenderer.color = PuzzleVisualStyle.Surface;

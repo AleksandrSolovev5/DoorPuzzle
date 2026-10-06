@@ -6,11 +6,8 @@ using UnityEngine.UI;
 // Presentation for the home screen only; gameplay remains in DoorPuzzleGame.
 public sealed class PuzzleMainMenu : MonoBehaviour
 {
-    private static readonly Color Ink = new Color32(46, 70, 79, 255);
-    private static readonly Color Muted = new Color32(126, 152, 163, 255);
-    private static Sprite floorSprite;
-    private static Sprite buttonSprite;
-    private static Sprite shadowSprite;
+    private static readonly Color Ink = PuzzleVisualStyle.Text;
+    private static readonly Color Muted = PuzzleVisualStyle.MutedText;
     private static Sprite gearSprite;
     private static Sprite playSprite;
     private RectTransform composition;
@@ -67,43 +64,38 @@ public sealed class PuzzleMainMenu : MonoBehaviour
     private void BuildPlayButton(Transform parent, UnityAction onPlay)
     {
         Vector2 position = new Vector2(0, -406);
-        Vector2 size = new Vector2(632, 150);
-        Shadow(parent, "Play Soft Shadow", position + new Vector2(0, -24), size, 0.18f);
-        Image edge = ImageAt(parent, "Play Lower Edge", position + new Vector2(0, -3),
-            size, new Color32(46, 90, 104, 255), PuzzleVisualStyle.RoundedSprite);
-        edge.pixelsPerUnitMultiplier = 0.4f;
-        Image face = ImageAt(parent, "PLAY", position, size, Color.white, buttonSprite);
+        Vector2 size = new Vector2(632, 108);
+        Image face = ImageAt(parent, "PLAY", position, size,
+            PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
         AddButton(face, onPlay);
         ImageAt(face.transform, "Play Symbol", new Vector2(-89, 0), new Vector2(48, 56),
-            Color.white, playSprite);
+            PuzzleVisualStyle.Surface, playSprite);
         Label(face.transform, "Label", "PLAY", 50, new Vector2(37, 0),
-            new Vector2(190, 90), Color.white, true);
+            new Vector2(190, 90), PuzzleVisualStyle.Surface, true);
     }
 
     private void BuildSettingsButton(Transform parent)
     {
         Vector2 position = new Vector2(423, 850);
         Vector2 size = new Vector2(100, 100);
-        Shadow(parent, "Settings Shadow", position + new Vector2(0, -5), size, 0.10f);
         Image border = ImageAt(parent, "Settings Border", position, size,
-            new Color32(220, 231, 234, 255), PuzzleVisualStyle.CircleSprite);
+            PuzzleVisualStyle.Border, PuzzleVisualStyle.CircleSprite);
         Image face = ImageAt(border.transform, "Settings", Vector2.zero,
-            size - Vector2.one * 3, new Color32(243, 248, 249, 255),
+            size - Vector2.one * 3, PuzzleVisualStyle.Background,
             PuzzleVisualStyle.CircleSprite);
         face.raycastTarget = true;
         AddButton(face, OpenSettings);
         ImageAt(face.transform, "Gear", Vector2.zero, new Vector2(52, 52),
-            new Color32(108, 140, 155, 255), gearSprite);
+            PuzzleVisualStyle.MutedText, gearSprite);
     }
 
     private void BuildSelectPuzzleButton(Transform parent, UnityAction onClick)
     {
         Image face = ImageAt(parent, "Select Puzzle", new Vector2(0, -600),
-            new Vector2(632, 104), PuzzleVisualStyle.Secondary, PuzzleVisualStyle.RoundedSprite);
-        face.pixelsPerUnitMultiplier = 0.4f;
+            new Vector2(632, 108), PuzzleVisualStyle.Secondary, PuzzleVisualStyle.RoundedSprite);
         AddButton(face, onClick);
         Label(face.transform, "Label", "SELECT PUZZLE", 34, Vector2.zero,
-            new Vector2(580, 90), Ink, true);
+            new Vector2(580, 90), Ink, false);
     }
 
     private void BuildSettingsPanel(UnityAction<bool> onMusicChanged,
@@ -113,20 +105,17 @@ public sealed class PuzzleMainMenu : MonoBehaviour
             new Vector2(1080, 1920), PuzzleVisualStyle.Overlay, null);
         overlay.raycastTarget = true;
         settingsPanel = overlay.gameObject;
-        Shadow(overlay.transform, "Settings Card Shadow", new Vector2(0, -14),
-            new Vector2(760, 570), 0.18f);
         Image card = ImageAt(overlay.transform, "Settings Card", Vector2.zero,
             new Vector2(760, 570), PuzzleVisualStyle.Surface, PuzzleVisualStyle.RoundedSprite);
-        card.pixelsPerUnitMultiplier = 0.4f;
         Label(card.transform, "Title", "SETTINGS", 60, new Vector2(0, 190),
             new Vector2(640, 90), Ink, false);
         BuildAudioToggle(card.transform, "MUSIC", 50, onMusicChanged);
         BuildAudioToggle(card.transform, "SOUND", -76, onSoundChanged);
         Image close = ImageAt(card.transform, "Close Settings", new Vector2(0, -202),
-            new Vector2(580, 96), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
+            new Vector2(580, 108), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
         AddButton(close, CloseSettings);
         Label(close.transform, "Label", "CLOSE", 36, Vector2.zero,
-            new Vector2(500, 80), Color.white, true);
+            new Vector2(500, 80), PuzzleVisualStyle.Surface, true);
         settingsPanel.SetActive(false);
     }
 
@@ -141,7 +130,7 @@ public sealed class PuzzleMainMenu : MonoBehaviour
         Image track = ImageAt(row.transform, "Switch Track", new Vector2(180, 0),
             new Vector2(148, 68), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
         Image knob = ImageAt(track.transform, "Switch Knob", new Vector2(38, 0),
-            new Vector2(52, 52), Color.white, PuzzleVisualStyle.CircleSprite);
+            new Vector2(52, 52), PuzzleVisualStyle.Surface, PuzzleVisualStyle.CircleSprite);
         Text status = Label(row.transform, "Status", "ON", 28, new Vector2(46, 0),
             new Vector2(90, 72), PuzzleVisualStyle.Primary, true);
         Toggle toggle = row.gameObject.AddComponent<Toggle>();
@@ -182,91 +171,35 @@ public sealed class PuzzleMainMenu : MonoBehaviour
 
     private void BuildBoard(Transform parent, Vector2 position)
     {
+        // Abstract preview uses the same floors, walls and accents as gameplay.
+        // The existing menu composition and button actions remain unchanged.
         Vector2 size = new Vector2(568, 540);
-        Shadow(parent, "Board Soft Shadow", position + new Vector2(0, -28), size, 0.19f);
-        Image lower = ImageAt(parent, "Raised Board Base", position + new Vector2(0, -18),
-            size, new Color32(222, 229, 228, 255), PuzzleVisualStyle.RoundedSprite);
-        lower.pixelsPerUnitMultiplier = 0.4f;
         Image board = ImageAt(parent, "Four Room Preview", position, size,
-            new Color32(253, 253, 251, 255), PuzzleVisualStyle.RoundedSprite);
-        board.pixelsPerUnitMultiplier = 0.4f;
+            PuzzleVisualStyle.Wall, PuzzleVisualStyle.RoundedSprite);
         Transform root = board.transform;
-
         for (int x = -1; x <= 1; x += 2)
         for (int y = -1; y <= 1; y += 2)
-        {
-            Vector2 center = new Vector2(x * 130, y * 126);
-            Image rim = ImageAt(root, "Recessed Room Rim", center + new Vector2(0, 6),
-                new Vector2(236, 226), new Color32(217, 220, 215, 255),
-                PuzzleVisualStyle.RoundedSprite);
-            rim.pixelsPerUnitMultiplier = 0.45f;
-            ImageAt(root, "Room Floor", center + new Vector2(0, -3),
-                new Vector2(236, 216), Color.white, floorSprite);
-            Image patch = ImageAt(root, "Floor Inlay", center + new Vector2(17, -8),
-                new Vector2(53, 53), new Color(0.68f, 0.66f, 0.61f, 0.07f),
-                PuzzleVisualStyle.RoundedSprite);
-            patch.pixelsPerUnitMultiplier = 1.5f;
-        }
+            ImageAt(root, "Room Floor", new Vector2(x * 130, y * 126),
+                new Vector2(240, 226), PuzzleVisualStyle.Surface, null);
 
         Door(root, new Vector2(-130, 0), false, false);
         Door(root, new Vector2(0, 126), true, false);
         Door(root, new Vector2(0, -126), true, false);
-        // Light is behind the green door, spilling into the upper right room.
-        ImageAt(root, "Exit Light", new Vector2(130, 172), new Vector2(144, 146),
-            new Color(0.60f, 1f, 0.72f, 0.13f), shadowSprite);
-        Door(root, new Vector2(130, 244), false, true);
-        Plant(root, new Vector2(-190, 172), 1f);
-        Plant(root, new Vector2(184, -193), 1.1f);
-
-        for (int i = 0; i < 3; i++)
-            ImageAt(root, "Player Trail", new Vector2(-194 + i * 21, -205 + i * 23),
-                Vector2.one * 14, new Color(0.33f, 0.64f, 0.79f, 0.20f),
-                PuzzleVisualStyle.CircleSprite);
+        Door(root, new Vector2(130, 254), false, true);
         Vector2 pawn = new Vector2(-123, -131);
-        Shadow(root, "Pawn Shadow", pawn + new Vector2(2, -7), Vector2.one * 42, 0.20f);
-        ImageAt(root, "Blue Pawn Base", pawn + new Vector2(0, -3), Vector2.one * 47,
-            new Color32(32, 125, 166, 255), PuzzleVisualStyle.CircleSprite);
-        ImageAt(root, "Blue Pawn", pawn, Vector2.one * 47,
-            new Color32(49, 159, 207, 255), PuzzleVisualStyle.CircleSprite);
-        ImageAt(root, "Pawn Highlight", pawn + new Vector2(-8, 9), Vector2.one * 17,
-            new Color(0.65f, 0.90f, 1f, 0.16f), PuzzleVisualStyle.CircleSprite);
+        ImageAt(root, "Pawn Rim", pawn, Vector2.one * 51,
+            PuzzleVisualStyle.Surface, PuzzleVisualStyle.CircleSprite);
+        ImageAt(root, "Pawn", pawn, Vector2.one * 47,
+            PuzzleVisualStyle.Player, PuzzleVisualStyle.CircleSprite);
     }
 
     private static void Door(Transform parent, Vector2 position, bool vertical, bool exit)
     {
-        Vector2 size = vertical ? new Vector2(22, 78) : new Vector2(78, 28);
-        Color baseColor = exit ? new Color32(72, 142, 97, 255) : new Color32(204, 126, 48, 255);
-        Color faceColor = exit ? new Color32(107, 179, 129, 255) : new Color32(242, 173, 83, 255);
-        Image body = ImageAt(parent, exit ? "Green Exit" : "Amber Door", position,
-            size, baseColor, PuzzleVisualStyle.RoundedSprite);
-        body.pixelsPerUnitMultiplier = 2.5f;
-        Image face = ImageAt(body.transform, "Door Face", new Vector2(0, 3),
-            size - new Vector2(4, 6), faceColor, PuzzleVisualStyle.RoundedSprite);
-        face.pixelsPerUnitMultiplier = 2.5f;
-    }
-
-    private static void Plant(Transform parent, Vector2 position, float scale)
-    {
-        RectTransform root = Container(parent, "Preview Plant", position, Vector2.one * 56);
-        root.localScale = Vector3.one * scale;
-        ImageAt(root, "Pot Shadow", new Vector2(2, -6), new Vector2(28, 20),
-            new Color(0.32f, 0.36f, 0.29f, 0.12f), PuzzleVisualStyle.CircleSprite);
-        ImageAt(root, "Pot", new Vector2(0, -10), new Vector2(23, 26),
-            new Color32(203, 192, 169, 255), PuzzleVisualStyle.CircleSprite);
-        ImageAt(root, "Soil", new Vector2(0, -2), new Vector2(21, 10),
-            new Color32(158, 153, 129, 255), PuzzleVisualStyle.CircleSprite);
-        for (int i = 0; i < 5; i++)
-        {
-            float angle = 16 + i * 72;
-            Vector2 offset = new Vector2(Mathf.Sin(angle * Mathf.Deg2Rad),
-                Mathf.Cos(angle * Mathf.Deg2Rad)) * 13;
-            Image leaf = ImageAt(root, "Leaf", offset + new Vector2(0, 10),
-                new Vector2(17, 30), Color.Lerp(new Color32(132, 158, 127, 255),
-                    new Color32(174, 192, 157, 255), i / 4f), PuzzleVisualStyle.CircleSprite);
-            leaf.rectTransform.localRotation = Quaternion.Euler(0, 0, -angle);
-        }
-        ImageAt(root, "Plant Center", new Vector2(0, 10), Vector2.one * 12,
-            new Color32(169, 186, 150, 255), PuzzleVisualStyle.CircleSprite);
+        Vector2 opening = vertical ? new Vector2(24, 78) : new Vector2(78, exit ? 34 : 30);
+        ImageAt(parent, "Door Opening", position, opening, PuzzleVisualStyle.Surface, null);
+        Vector2 leaf = vertical ? new Vector2(9, 68) : new Vector2(68, 9);
+        ImageAt(parent, exit ? "Exit" : "Door", position, leaf,
+            exit ? PuzzleVisualStyle.ExitOpen : PuzzleVisualStyle.DoorOpen, null);
     }
 
     private static void AddButton(Image face, UnityAction action)
@@ -275,9 +208,10 @@ public sealed class PuzzleMainMenu : MonoBehaviour
         Button button = face.gameObject.AddComponent<Button>();
         button.targetGraphic = face;
         ColorBlock colors = button.colors;
-        colors.highlightedColor = new Color(0.96f, 0.98f, 1f);
-        colors.pressedColor = new Color(0.83f, 0.90f, 0.93f);
-        colors.selectedColor = Color.white;
+        colors.highlightedColor = PuzzleVisualStyle.ButtonHighlight;
+        colors.pressedColor = PuzzleVisualStyle.ButtonPressed;
+        colors.selectedColor = colors.highlightedColor;
+        colors.disabledColor = PuzzleVisualStyle.ButtonDisabled;
         colors.fadeDuration = 0.08f;
         button.colors = colors;
         if (action != null) button.onClick.AddListener(action);
@@ -318,60 +252,44 @@ public sealed class PuzzleMainMenu : MonoBehaviour
         image.sprite = sprite;
         image.color = color;
         image.raycastTarget = false;
-        if (sprite == PuzzleVisualStyle.RoundedSprite || sprite == shadowSprite)
+        if (sprite == PuzzleVisualStyle.RoundedSprite)
+        {
             image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = PuzzleVisualStyle.ButtonCornerScale;
+        }
         return image;
-    }
-
-    private static void Shadow(Transform parent, string name, Vector2 position,
-        Vector2 size, float opacity)
-    {
-        ImageAt(parent, name, position, size + Vector2.one * 80,
-            new Color(0.19f, 0.32f, 0.36f, opacity), shadowSprite);
     }
 
     private static void EnsureSprites()
     {
-        if (floorSprite == null) floorSprite = CreateSprite("Menu Floor", 0);
-        if (buttonSprite == null) buttonSprite = CreateSprite("Menu Play Button", 1);
-        if (shadowSprite == null) shadowSprite = CreateSprite("Menu Soft Shadow", 2);
-        if (gearSprite == null) gearSprite = CreateSprite("Menu Gear", 3);
-        if (playSprite == null) playSprite = CreateSprite("Menu Play Triangle", 4);
+        if (gearSprite == null) gearSprite = CreateSprite("Menu Gear", true);
+        if (playSprite == null) playSprite = CreateSprite("Menu Play Triangle", false);
     }
 
-    private static Sprite CreateSprite(string name, int kind)
+    private static Sprite CreateSprite(string name, bool gear)
     {
         const int size = 256;
-        int width = kind == 1 ? 1024 : size;
-        Texture2D texture = new Texture2D(width, size, TextureFormat.RGBA32, true);
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true);
         texture.name = name;
         texture.hideFlags = HideFlags.HideAndDontSave;
         texture.wrapMode = TextureWrapMode.Clamp;
         texture.filterMode = FilterMode.Trilinear;
-        Color[] pixels = new Color[width * size];
+        Color[] pixels = new Color[size * size];
         for (int y = 0; y < size; y++)
-        for (int x = 0; x < width; x++)
+        for (int x = 0; x < size; x++)
         {
-            Vector2 p = new Vector2((x + 0.5f) / width - 0.5f, (y + 0.5f) / size - 0.5f);
-            Color pixel = Color.white;
+            Vector2 p = new Vector2((x + 0.5f) / size - 0.5f, (y + 0.5f) / size - 0.5f);
             float distance;
-            if (kind == 2)
-            {
-                distance = RoundedDistance(p, new Vector2(0.32f, 0.32f), 0.08f);
-                float outside = Mathf.Max(0, distance);
-                pixel.a = Mathf.Exp(-outside * outside / 0.008f);
-            }
-            else if (kind == 3)
+            if (gear)
             {
                 float angle = Mathf.Atan2(p.y, p.x);
-                float tooth = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg, 
+                float tooth = Mathf.Abs(Mathf.DeltaAngle(angle * Mathf.Rad2Deg,
                     Mathf.Round(angle * Mathf.Rad2Deg / 45f) * 45f));
                 float radius = Mathf.Lerp(0.32f, 0.43f,
                     1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(7f, 17f, tooth)));
                 distance = Mathf.Max(p.magnitude - radius, 0.16f - p.magnitude);
-                pixel.a = Mathf.Clamp01(0.5f - distance * size);
             }
-            else if (kind == 4)
+            else
             {
                 Vector2 a = new Vector2(-0.28f, -0.34f);
                 Vector2 b = new Vector2(0.32f, 0);
@@ -381,37 +299,16 @@ public sealed class PuzzleMainMenu : MonoBehaviour
                 bool inside = Cross(b - a, p - a) >= 0 && Cross(c - b, p - b) >= 0 &&
                     Cross(a - c, p - c) >= 0;
                 distance = (inside ? -edge : edge) - 0.02f;
-                pixel.a = Mathf.Clamp01(0.5f - distance * size);
             }
-            else
-            {
-                Vector2 shapePoint = kind == 1 ? new Vector2(p.x * 4.2f, p.y) : p;
-                Vector2 halfSize = kind == 1 ? new Vector2(2.095f, 0.495f) : Vector2.one * 0.495f;
-                distance = RoundedDistance(shapePoint, halfSize, kind == 0 ? 0.085f : 0.21f);
-                pixel = kind == 0
-                    ? Color.Lerp(new Color32(239, 237, 229, 255), new Color32(215, 214, 205, 255),
-                        Mathf.Pow(Mathf.Clamp01(p.y + 0.5f), 5f))
-                    : Color.Lerp(new Color32(53, 99, 113, 255), new Color32(81, 137, 155, 255),
-                        p.y + 0.5f);
-                pixel.a = Mathf.Clamp01(0.5f - distance * size);
-            }
-            pixels[y * width + x] = pixel;
+            pixels[y * size + x] = new Color(1, 1, 1, Mathf.Clamp01(0.5f - distance * size));
         }
         texture.SetPixels(pixels);
         texture.Apply(true, true);
-        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, width, size),
-            new Vector2(0.5f, 0.5f), 100, 0, SpriteMeshType.FullRect,
-            kind == 2 ? Vector4.one * 96 : Vector4.zero);
+        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f), 100, 0, SpriteMeshType.FullRect);
         sprite.name = name;
         sprite.hideFlags = HideFlags.HideAndDontSave;
         return sprite;
-    }
-
-    private static float RoundedDistance(Vector2 p, Vector2 halfSize, float radius)
-    {
-        Vector2 q = new Vector2(Mathf.Abs(p.x), Mathf.Abs(p.y)) - halfSize + Vector2.one * radius;
-        return new Vector2(Mathf.Max(q.x, 0), Mathf.Max(q.y, 0)).magnitude +
-            Mathf.Min(Mathf.Max(q.x, q.y), 0) - radius;
     }
 
     private static float PointToSegment(Vector2 p, Vector2 a, Vector2 b)
