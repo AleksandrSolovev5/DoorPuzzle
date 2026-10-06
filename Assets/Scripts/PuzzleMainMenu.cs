@@ -3,7 +3,7 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-// Presentation for the home screen only; gameplay and puzzle data stay in PuzzleUI.
+// Presentation for the home screen only; gameplay remains in DoorPuzzleGame.
 public sealed class PuzzleMainMenu : MonoBehaviour
 {
     private static readonly Color Ink = new Color32(46, 70, 79, 255);
@@ -142,9 +142,8 @@ public sealed class PuzzleMainMenu : MonoBehaviour
             new Vector2(148, 68), PuzzleVisualStyle.Primary, PuzzleVisualStyle.RoundedSprite);
         Image knob = ImageAt(track.transform, "Switch Knob", new Vector2(38, 0),
             new Vector2(52, 52), Color.white, PuzzleVisualStyle.CircleSprite);
-        Label(row.transform, "Status", "ON", 28, new Vector2(46, 0),
+        Text status = Label(row.transform, "Status", "ON", 28, new Vector2(46, 0),
             new Vector2(90, 72), PuzzleVisualStyle.Primary, true);
-        Text status = row.transform.Find("Status").GetComponent<Text>();
         Toggle toggle = row.gameObject.AddComponent<Toggle>();
         toggle.targetGraphic = row;
         toggle.transition = Selectable.Transition.None;
@@ -284,7 +283,7 @@ public sealed class PuzzleMainMenu : MonoBehaviour
         if (action != null) button.onClick.AddListener(action);
     }
 
-    private void Label(Transform parent, string name, string caption, int size,
+    private Text Label(Transform parent, string name, string caption, int size,
         Vector2 position, Vector2 bounds, Color color, bool bold)
     {
         RectTransform root = Container(parent, name, position, bounds);
@@ -297,6 +296,7 @@ public sealed class PuzzleMainMenu : MonoBehaviour
         label.color = color;
         label.raycastTarget = false;
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
+        return label;
     }
 
     private static RectTransform Container(Transform parent, string name,

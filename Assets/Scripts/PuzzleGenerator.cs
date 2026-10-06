@@ -40,6 +40,7 @@ public static class PuzzleGenerator
 
     public static LevelDefinition Generate(PuzzleConfig config, string name)
     {
+        if (config == null) throw new ArgumentNullException(nameof(config));
         if (config.RoomCount < 3 || config.RoomCount > GridSize * GridSize ||
             config.DoorCount < config.RoomCount + 1 || config.DoorCount > 30 ||
             config.DeadEndCount < 0 || config.Branching < 0 || config.Branching > 2 ||
@@ -55,6 +56,19 @@ public static class PuzzleGenerator
             throw new ArgumentException("Invalid puzzle configuration for " + name);
 
         config = NormalizeConfig(config, name);
+        try
+        {
+            return GenerateValidated(config, name);
+        }
+        catch (PuzzleSolver.SearchLimitException error)
+        {
+            Debug.LogWarning(name + ": " + error.Message + " Using the bounded fallback graph.");
+            return CreateSafeFallback(config, name);
+        }
+    }
+
+    private static LevelDefinition GenerateValidated(PuzzleConfig config, string name)
+    {
         if (TryGenerate(config, name, 0, out LevelDefinition puzzle)) return puzzle;
 
         // Quality preferences are softer than the no-leaf rule. Keep the
@@ -72,7 +86,8 @@ public static class PuzzleGenerator
 
         Debug.LogWarning(name + ": no variant met the requested configuration " +
             "after " + (MaxAttempts * 2) + " attempts. Using a solvable " +
-            "no-leaf fallback layout with " + config.RoomCount + " rooms.");
+            "no-leaf fallback layout with " + config.RoomCount + " rooms. " +
+            "Door count, aspect ratio and arrow quality preferences may be relaxed.");
         return CreateSafeFallback(config, name);
     }
 
@@ -185,10 +200,9 @@ public static class PuzzleGenerator
             0, 0, original.Seed, original.VisualTheme,
             false, 2, 2, 0, 0, original.Atmosphere, original.RoomLayout,
             original.LongRoomSpan, Math.Min(original.MinElongatedRooms, 2),
-            oneWayDoorCount: original.OneWayDoorCount,
-            maxLayoutAspectRatio: original.MaxLayoutAspectRatio);
+            oneWayDoorCount: original.OneWayDoorCount);
         if (TryFinishGraph(fallback, name, cells, edges,
-            new System.Random(original.Seed), out LevelDefinition result))
+            new System.Random(original.Seed), out LevelDefinition result, false))
             return result;
         throw new InvalidOperationException(name + ": safe fallback validation failed.");
     }
@@ -299,7 +313,7 @@ public static class PuzzleGenerator
 
     private static bool TryFinishGraph(PuzzleConfig config, string name,
         List<Vector2Int> cells, List<Edge> edges, System.Random random,
-        out LevelDefinition puzzle)
+        out LevelDefinition puzzle, bool requireArrowQuality = true)
     {
         puzzle = null;
         int[] degree = CountDegrees(edges, cells.Count);
@@ -336,7 +350,7 @@ public static class PuzzleGenerator
             DoorDefinition[] doors = CreateDoors(edges, cells, rooms, exit);
             LevelDefinition candidate = new LevelDefinition(name, rooms, doors,
                 5f, ThemeColor(config.VisualTheme), config.Atmosphere);
-            if (TryFinishDirections(config, candidate, degree, out puzzle)) return true;
+            if (TryFinishDirections(config, candidate, degree, out puzzle, requireArrowQuality)) return true;
         }
 
         return false;
@@ -367,7 +381,7 @@ public static class PuzzleGenerator
     }
 
     private static bool TryFinishDirections(PuzzleConfig config, LevelDefinition undirected,
-        int[] degree, out LevelDefinition puzzle)
+        int[] degree, out LevelDefinition puzzle, bool requireArrowQuality)
     {
         puzzle = null;
         if (!HasStartQuality(config, undirected, degree, out _)) return false;
@@ -419,7 +433,7 @@ public static class PuzzleGenerator
                 doors, undirected.CameraSize, undirected.FloorColor, config.Atmosphere);
             // The witness still works, but perform the actual directed solver
             // and quality checks, including survival with directed reachability.
-            if (!HasStartQuality(config, directed, degree, out _, true))
+            if (!HasStartQuality(config, directed, degree, out _, requireArrowQuality))
                 continue;
             puzzle = directed;
             return true;

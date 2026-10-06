@@ -317,20 +317,11 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     private void TryChooseStartRoom(Vector2 point)
     {
         if (state != PuzzleGameState.ChooseStartRoom || busy) return;
-
-        for (int i = 0; i < level.Rooms.Length; i++)
-        {
-            RoomDefinition room = level.Rooms[i];
-            Vector2 offset = point - room.Center;
-            if (Mathf.Abs(offset.x) >= room.Size.x * 0.5f ||
-                Mathf.Abs(offset.y) >= room.Size.y * 0.5f)
-                continue;
-
-            currentRoom = i;
-            DrawPlayer();
-            SetState(PuzzleGameState.Playing);
-            return;
-        }
+        int room = PuzzleSwipeResolver.RoomAtPoint(level, point);
+        if (room < 0) return;
+        currentRoom = room;
+        DrawPlayer();
+        SetState(PuzzleGameState.Playing);
     }
 
     private IEnumerator CrossDoor(int index)
@@ -425,7 +416,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
             state != PuzzleGameState.Playing && state != PuzzleGameState.Lose)
             return;
 
-        StopAllCoroutines();
         LoadPuzzle(currentLevelIndex, currentPuzzleIndex);
     }
 
@@ -434,7 +424,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         if (state != PuzzleGameState.MainMenu && state != PuzzleGameState.GameComplete)
             return;
 
-        StopAllCoroutines();
         // PLAY AGAIN retains its existing behavior; PLAY resumes the frontier.
         int index = state == PuzzleGameState.GameComplete ? 0 : progress.PlayIndex;
         if (LevelCatalog.TryGetPuzzle(index, out int levelIndex, out int puzzleIndex))
@@ -450,7 +439,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
     {
         if (state != PuzzleGameState.PuzzleSelection || !progress.IsUnlocked(index)) return;
         if (!LevelCatalog.TryGetPuzzle(index, out int levelIndex, out int puzzleIndex)) return;
-        StopAllCoroutines();
         LoadPuzzle(levelIndex, puzzleIndex);
     }
 
@@ -473,14 +461,9 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void ShowMainMenu()
     {
-        StopAllCoroutines();
         ClearPuzzle();
         currentLevelIndex = 0;
         currentPuzzleIndex = 0;
-        currentRoom = -1;
-        closedDoors = 0;
-        closedCount = 0;
-        busy = false;
         SetState(PuzzleGameState.MainMenu);
     }
 
@@ -502,6 +485,8 @@ public sealed class DoorPuzzleGame : MonoBehaviour
 
     private void ClearPuzzle()
     {
+        // Every replacement path cancels movement before destroying its views.
+        StopAllCoroutines();
         CancelGesture();
         if (soundEffects != null) soundEffects.Stop();
         if (levelRoot != null)
@@ -514,6 +499,10 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         level = null;
         doorViews = null;
         player = null;
+        currentRoom = -1;
+        closedDoors = 0;
+        closedCount = 0;
+        busy = false;
     }
 
     private void LoadPuzzle(int levelIndex, int puzzleIndex)
@@ -534,11 +523,6 @@ public sealed class DoorPuzzleGame : MonoBehaviour
         level = generatedPuzzles[levelIndex][puzzleIndex];
         if (levelIndex == 1)
             level = Level2Presentation.Prepare(level, ui.GameplayScreenArea(true), ui.PixelScale);
-        currentRoom = -1;
-        closedDoors = 0;
-        closedCount = 0;
-        player = null;
-        busy = false;
         mainCamera.orthographic = true;
         if (levelIndex != 1) FitPuzzleCamera(ui.GameplayScreenArea());
         mainCamera.backgroundColor = level.Palette.Background;

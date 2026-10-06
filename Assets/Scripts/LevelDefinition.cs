@@ -13,6 +13,22 @@ public sealed class LevelDefinition
     public LevelDefinition(string name, RoomDefinition[] rooms, DoorDefinition[] doors,
         float cameraSize, Color floorColor, PuzzleAtmosphere atmosphere = PuzzleAtmosphere.Light)
     {
+        // The solver uses a 30-bit door mask and a 16-bit room ID in memo keys.
+        if (rooms == null || rooms.Length == 0 || rooms.Length > ushort.MaxValue)
+            throw new System.ArgumentException("A puzzle needs 1..65535 rooms.", nameof(rooms));
+        if (doors == null || doors.Length == 0 || doors.Length > 30)
+            throw new System.ArgumentException("A puzzle needs 1..30 doors including EXIT.", nameof(doors));
+        int exits = 0;
+        foreach (RoomDefinition room in rooms)
+            if (room == null) throw new System.ArgumentException("A room is missing.", nameof(rooms));
+        foreach (DoorDefinition door in doors)
+        {
+            if (door == null || door.RoomA < 0 || door.RoomA >= rooms.Length ||
+                (door.IsExit ? door.RoomB != -1 : door.RoomB < 0 || door.RoomB >= rooms.Length || door.RoomA == door.RoomB))
+                throw new System.ArgumentException("A door references an invalid room.", nameof(doors));
+            if (door.IsExit) exits++;
+        }
+        if (exits != 1) throw new System.ArgumentException("A puzzle needs exactly one EXIT.", nameof(doors));
         Name = name;
         Rooms = rooms;
         Doors = doors;

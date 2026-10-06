@@ -32,7 +32,7 @@ public static class PuzzleSwipeResolver
         for (int i = 0; i < puzzle.Doors.Length; i++)
         {
             DoorDefinition door = puzzle.Doors[i];
-            if (!door.Touches(currentRoom) || !canUseDoor(i)) continue;
+            if (!door.Touches(currentRoom)) continue;
             if (target >= 0)
             {
                 if (door.IsExit || door.OtherRoom(currentRoom) != target) continue;
@@ -45,7 +45,9 @@ public static class PuzzleSwipeResolver
             bestDistance = distance;
             best = i;
         }
-        return best;
+        // Resolve intention before availability. Otherwise aiming at a closed
+        // or reverse one-way door silently selects another parallel door.
+        return best >= 0 && canUseDoor(best) ? best : -1;
     }
 
     private static bool CrossesExit(RoomDefinition room, DoorDefinition door,

@@ -3,19 +3,13 @@ using System.Collections.Generic;
 // Each bit in closedDoors records one permanently closed door.
 public static class PuzzleSolver
 {
-    // Validator used by the generator. EXIT must be the final edge.
-    public static bool TryFindWinningStart(LevelDefinition puzzle, out int startRoom)
-    {
-        HashSet<long> failed = new HashSet<long>();
-        for (int room = 0; room < puzzle.Rooms.Length; room++)
-        {
-            if (!Search(puzzle, room, 0, failed)) continue;
-            startRoom = room;
-            return true;
-        }
+    // Custom configs must not turn an exhaustive validation into unbounded
+    // memory growth. Catalog puzzles visit far fewer states than this limit.
+    private const int MaxSearchStates = 100000;
 
-        startRoom = -1;
-        return false;
+    internal sealed class SearchLimitException : System.InvalidOperationException
+    {
+        public SearchLimitException() : base("Puzzle validation exceeded " + MaxSearchStates + " states.") { }
     }
 
     // The generator uses all winning starts to check that a valid start is
@@ -81,6 +75,7 @@ public static class PuzzleSolver
         if (IsDeadEnd(puzzle, room, closed)) return 0;
         long state = ((long)closed << 16) | (uint)room;
         if (memo.TryGetValue(state, out int cached)) return cached;
+        if (memo.Count >= MaxSearchStates) throw new SearchLimitException();
 
         int best = 0;
         for (int i = 0; i < puzzle.Doors.Length; i++)
@@ -102,6 +97,7 @@ public static class PuzzleSolver
     {
         long state = ((long)closed << 16) | (uint)room;
         if (failed.Contains(state)) return false;
+        if (failed.Count >= MaxSearchStates) throw new SearchLimitException();
 
         int allClosed = (1 << puzzle.Doors.Length) - 1;
         for (int i = 0; i < puzzle.Doors.Length; i++)

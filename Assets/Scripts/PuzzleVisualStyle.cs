@@ -5,7 +5,6 @@ public static class PuzzleVisualStyle
 {
     public static readonly Color Background = Rgb(238, 243, 243);
     public static readonly Color Surface = Rgb(252, 253, 251);
-    public static readonly Color RoomSurface = Rgb(246, 248, 244);
     public static readonly Color Text = Rgb(38, 60, 69);
     public static readonly Color MutedText = Rgb(104, 124, 132);
     public static readonly Color Border = Rgb(213, 223, 223);
@@ -21,7 +20,6 @@ public static class PuzzleVisualStyle
     public static readonly Color DoorClosed = Rgb(160, 175, 178);
     public static readonly Color OneWayOpen = Rgb(154, 143, 186);
     public static readonly Color OneWayClosed = Rgb(127, 130, 151);
-    public static readonly Color OneWayMarker = Rgb(78, 73, 104);
     public static readonly Color OneWayArrow = Rgb(244, 240, 250);
     public static readonly Color ExitOpen = Rgb(85, 139, 112);
     public static readonly Color ExitClosed = Rgb(139, 168, 151);
@@ -135,12 +133,6 @@ public static class PuzzleVisualStyle
         roomShadowSprite.name = texture.name;
         roomShadowSprite.hideFlags = HideFlags.HideAndDontSave;
         return roomShadowSprite;
-    }
-
-    public static Color RoomColor(Color generatedTheme)
-    {
-        // Preserve the existing per-puzzle theme as a restrained floor tint.
-        return Color.Lerp(RoomSurface, generatedTheme, 0.16f);
     }
 
     private static Color Rgb(byte r, byte g, byte b)

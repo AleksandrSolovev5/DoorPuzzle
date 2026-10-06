@@ -9,7 +9,8 @@ public sealed class DoorView : MonoBehaviour
     private const float TapSize = 0.72f;
 
     public int Index { get; private set; }
-    public bool IsClosed { get; private set; }
+    // Animation state only; the authoritative closed-door mask belongs to the game.
+    private bool isClosed;
 
     private SpriteRenderer drawing;
     private Transform hinge;
@@ -58,7 +59,7 @@ public sealed class DoorView : MonoBehaviour
             door.IsOneWay ? PuzzleVisualStyle.OneWayOpen : PuzzleVisualStyle.DoorOpen;
         closedColor = door.IsExit ? PuzzleVisualStyle.ExitClosed :
             door.IsOneWay ? PuzzleVisualStyle.OneWayClosed : PuzzleVisualStyle.DoorClosed;
-        IsClosed = false;
+        isClosed = false;
         hinge.localRotation = Quaternion.Euler(0, 0, openAngle);
         drawing.color = openColor;
         if (door.IsOneWay)
@@ -140,7 +141,7 @@ public sealed class DoorView : MonoBehaviour
 
     public IEnumerator AnimateClosed(float duration)
     {
-        if (IsClosed) yield break;
+        if (isClosed) yield break;
 
         float elapsed = 0;
         while (elapsed < duration)
@@ -157,6 +158,6 @@ public sealed class DoorView : MonoBehaviour
         hinge.localRotation = Quaternion.Euler(0, 0, closedAngle);
         drawing.color = closedColor;
         SetDirectionMarkerProgress(1f);
-        IsClosed = true;
+        isClosed = true;
     }
 }
